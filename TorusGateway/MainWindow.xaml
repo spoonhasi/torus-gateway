@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:TorusGateway"
         xmlns:torusControl="clr-namespace:TorusGateway.Torus"
         mc:Ignorable="d"
-        Title="TorusGateway" Height="600" Width="1050">
+        Title="TorusGateway v1.1" Height="600" Width="1050">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="110"/>
@@ -24,10 +24,10 @@
                 <TextBox x:Name="TextBoxWebServerPort" FontFamily="Consolas" Text="5001" Width="120"/>
             </StackPanel>
             <Button x:Name="ButtonWebServerClose" Content="WebServer Close" Width="120" HorizontalAlignment="Left" Margin="10,70,0,0" VerticalAlignment="Top" Click="Button_Click"/>
-            <Button x:Name="ButtonExpand" Content="" BorderThickness="0" Click="Button_Click" Background="Transparent" VerticalAlignment="Top" Margin="0, 90, 0, 0" Height="20" FontSize="4"/>
+            <Button x:Name="ButtonExpand" Content="▼" BorderThickness="0" Click="Button_Click" Background="Transparent" VerticalAlignment="Top" Margin="0, 90, 0, 0" Height="20" FontSize="12"/>
         </Grid>
         <Grid Grid.Row="1">
-            <torusControl:MachineListControl/>
+            <torusControl:MachineListControl ConfigFilePath="config.ini"/>
         </Grid>
     </Grid>
 </Window>

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -20,6 +21,22 @@ using System.Xml.Linq;
 
 namespace TorusGateway.Torus
 {
+    public class NCmachine
+    {
+        public bool activate { get; set; } = false;
+        public string name { get; set; } = "";
+        public int id { get; set; } = 0;
+        public string vendorCode { get; set; } = "";
+        public string address { get; set; } = "";
+        public int port { get; set; } = 0;
+        public string exDllPath { get; set; } = "";
+        public string connectCode { get; set; } = "";
+        public string ncVersionCode { get; set; } = "";
+        public string toolSystem { get; set; } = "";
+        public string username { get; set; } = "";
+        public string password { get; set; } = "";
+    }
+
     /// <summary>
     /// MachineListControl.xaml에 대한 상호 작용 논리
     /// </summary>
@@ -53,24 +70,24 @@ namespace TorusGateway.Torus
 
         private ObservableCollection<NCmachine> ncMachineList_ { get; set; } = [];
 
+        public string ConfigFilePath { get; set; } = "config.ini";
         public MachineListControl()
         {
             InitializeComponent();
+            TextBlockSaveStatus.Visibility = Visibility.Hidden;
             ListViewMachineList.ItemsSource = ncMachineList_;
-            TextBoxTorusRunPath.Text = ReadConfig(Constants.ConfigFileName, "Main", "TorusRunPath", "");
-            TextBoxTorusExitPath.Text = ReadConfig(Constants.ConfigFileName, "Main", "TorusExitPath", "");
-            TextBoxTorusMachineListPath.Text = ReadConfig(Constants.ConfigFileName, "Main", "TorusMachineListPath", "");
+            LoadPath();
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button button)
+            if (sender is Button)
             {
                 if (sender == ButtonTorusRunPath)
                 {
                     if (FileSelector(TextBoxTorusRunPath.Text, out string newPath))
                     {
-                        WriteConfig(Constants.ConfigFileName, "Main", "TorusRunPath", newPath);
+                        WriteConfig(ConfigFilePath, "Main", "TorusRunPath", newPath);
                         TextBoxTorusRunPath.Text = newPath;
                     }
                 }
@@ -78,7 +95,7 @@ namespace TorusGateway.Torus
                 {
                     if (FileSelector(TextBoxTorusExitPath.Text, out string newPath))
                     {
-                        WriteConfig(Constants.ConfigFileName, "Main", "TorusExitPath", newPath);
+                        WriteConfig(ConfigFilePath, "Main", "TorusExitPath", newPath);
                         TextBoxTorusExitPath.Text = newPath;
                     }
                 }
@@ -86,9 +103,17 @@ namespace TorusGateway.Torus
                 {
                     if (FileSelector(TextBoxTorusMachineListPath.Text, out string newPath))
                     {
-                        WriteConfig(Constants.ConfigFileName, "Main", "TorusMachineListPath", newPath);
+                        WriteConfig(ConfigFilePath, "Main", "TorusMachineListPath", newPath);
                         TextBoxTorusMachineListPath.Text = newPath;
                     }
+                }
+                else if (sender == ButtonTorusPathSave)
+                {
+                    SavePath();
+                }
+                else if (sender == ButtonTorusPathLoad)
+                {
+                    LoadPath();
                 }
                 else if (sender == ButtonTorusRunExecute)
                 {
@@ -106,14 +131,6 @@ namespace TorusGateway.Torus
                 {
                     MachineListXmlWrite(TextBoxTorusMachineListPath.Text);
                 }
-                else if (sender == ButtonTorusMachineListItemSave)
-                {
-                    SaveMachineListItem();
-                }
-                else if (sender == ButtonTorusMachineListItemCancel)
-                {
-                    CancelMachineListItem();
-                }
                 else if (sender == ButtonTorusMachineListItemAdd)
                 {
                     AddMachineListItem();
@@ -127,6 +144,20 @@ namespace TorusGateway.Torus
                     ArrangeMachineListItem();
                 }
             }
+        }
+
+        private void LoadPath()
+        {
+            TextBoxTorusRunPath.Text = ReadConfig(ConfigFilePath, "Main", "TorusRunPath", "");
+            TextBoxTorusExitPath.Text = ReadConfig(ConfigFilePath, "Main", "TorusExitPath", "");
+            TextBoxTorusMachineListPath.Text = ReadConfig(ConfigFilePath, "Main", "TorusMachineListPath", "");
+        }
+
+        private void SavePath()
+        {
+            WriteConfig(ConfigFilePath, "Main", "TorusRunPath", TextBoxTorusRunPath.Text);
+            WriteConfig(ConfigFilePath, "Main", "TorusExitPath", TextBoxTorusExitPath.Text);
+            WriteConfig(ConfigFilePath, "Main", "TorusMachineListPath", TextBoxTorusMachineListPath.Text);
         }
 
         private void ListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -194,6 +225,10 @@ namespace TorusGateway.Torus
 
         private void MachineListXmlRead(string filePath)
         {
+            ClearMachineListItem();
+            ncMachineList_.Clear();
+            ListViewMachineList.Items.Refresh();
+            TextBlockSaveStatus.Visibility = Visibility.Hidden;
             if (!System.IO.File.Exists(filePath))
             {
                 MessageBox.Show("MachineList.xml 파일을 찾을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -204,7 +239,6 @@ namespace TorusGateway.Torus
                 MessageBox.Show("파일 이름이 \"MachineList.xml\"이어야 합니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
-            ncMachineList_.Clear();
             XDocument doc = XDocument.Load(filePath);
             if (doc.Root.Name.ToString().Equals("machinelist", StringComparison.InvariantCultureIgnoreCase))
             {
@@ -298,7 +332,6 @@ namespace TorusGateway.Torus
                     }
                 }
             }
-            ClearMachineListItem();
             ListViewMachineList.Items.Refresh();
         }
 
@@ -352,6 +385,7 @@ namespace TorusGateway.Torus
             }
             XDocument doc = new(rootElement);
             doc.Save(filePath);
+            TextBlockSaveStatus.Visibility = Visibility.Hidden;
             MessageBox.Show("MachineList.xml 파일을 변경하였습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
@@ -371,7 +405,7 @@ namespace TorusGateway.Torus
                 MessageBox.Show("id는 1 이상의 정수여야 합니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
-            if (!int.TryParse(TextBoxTorusNcMachinePort.Text, out int port) || id < 0 || id > 65535)
+            if (!int.TryParse(TextBoxTorusNcMachinePort.Text, out int port) || port < 0 || port > 65535)
             {
                 MessageBox.Show("port는 0 이상, 65535 이하의 정수여야 합니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
@@ -424,6 +458,7 @@ namespace TorusGateway.Torus
             ListViewMachineList.Items.Refresh();
             ListViewMachineList.SelectedItem = machine;
             ListViewMachineList.ScrollIntoView(machine);
+            TextBlockSaveStatus.Visibility = Visibility.Visible;
         }
 
         private void RemoveMachineListItem()
@@ -435,15 +470,21 @@ namespace TorusGateway.Torus
             ncMachineList_.Remove(ncMachine);
             ListViewMachineList.Items.Refresh();
             ClearMachineListItem();
+            TextBlockSaveStatus.Visibility = Visibility.Visible;
         }
 
         private void ArrangeMachineListItem()
         {
+            if (ListViewMachineList.Items.Count < 1)
+            {
+                return;
+            }
             var selectedItem = ListViewMachineList.SelectedItem as NCmachine;
             var sortedList = new ObservableCollection<NCmachine>(ncMachineList_.OrderBy(x => x.id));
             ncMachineList_ = sortedList;
             ListViewMachineList.ItemsSource = ncMachineList_;
             ListViewMachineList.Items.Refresh();
+            TextBlockSaveStatus.Visibility = Visibility.Visible;
         }
 
         private void ClearMachineListItem()
@@ -460,6 +501,7 @@ namespace TorusGateway.Torus
             ComboBoxTorusNcMachineToolSystem.SelectedIndex = 0;
             TextBoxTorusNcMachineUsername.Text = "";
             TextBoxTorusNcMachinePassword.Text = "";
+            TextBlockSaveStatus.Visibility = Visibility.Hidden;
         }
 
         private void LoadMachineListItem()
@@ -467,6 +509,11 @@ namespace TorusGateway.Torus
             if (ListViewMachineList.SelectedItem is not NCmachine ncMachine)
             {
                 return;
+            }
+            bool isHidden = false;
+            if (TextBlockSaveStatus.Visibility == Visibility.Hidden)
+            {
+                isHidden = true;
             }
             string targetValue = ncMachine.activate.ToString();
             foreach (ComboBoxItem item in ComboBoxTorusNcMachineActivate.Items)
@@ -539,6 +586,100 @@ namespace TorusGateway.Torus
             TextBoxTorusNcMachineUsername.Text = targetValue;
             targetValue = ncMachine.password;
             TextBoxTorusNcMachinePassword.Text = targetValue;
+            if (isHidden)
+            {
+                TextBlockSaveStatus.Visibility = Visibility.Hidden;
+            }
+        }
+
+        private void ComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ListViewMachineList.SelectedItem is not NCmachine ncMachine)
+            {
+                return;
+            }
+            TextBlockSaveStatus.Visibility = Visibility.Visible;
+            if (sender == ComboBoxTorusNcMachineActivate)
+            {
+                string activate = ((ComboBoxItem)ComboBoxTorusNcMachineActivate.SelectedItem)?.Content.ToString().ToLowerInvariant();
+                if (activate == "true")
+                {
+                    ncMachine.activate = true;
+                }
+                else
+                {
+                    ncMachine.activate = false;
+                }
+            }
+            else if (sender == ComboBoxTorusNcMachineVendorCode)
+            {
+                ncMachine.vendorCode = ((ComboBoxItem)ComboBoxTorusNcMachineVendorCode.SelectedItem)?.Content.ToString();
+            }
+            else if (sender == ComboBoxTorusNcMachineConnectCode)
+            {
+                ncMachine.connectCode = ((ComboBoxItem)ComboBoxTorusNcMachineConnectCode.SelectedItem)?.Content.ToString();
+            }
+            else if (sender == ComboBoxTorusNcMachineNcVersionCode)
+            {
+                ncMachine.ncVersionCode = ((ComboBoxItem)ComboBoxTorusNcMachineNcVersionCode.SelectedItem)?.Content.ToString();
+            }
+            else if (sender == ComboBoxTorusNcMachineToolSystem)
+            {
+                ncMachine.toolSystem = ((ComboBoxItem)ComboBoxTorusNcMachineToolSystem.SelectedItem)?.Content.ToString();
+            }
+            ListViewMachineList.Items.Refresh();
+        }
+
+        private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (ListViewMachineList.SelectedItem is not NCmachine ncMachine)
+            {
+                return;
+            }
+            TextBlockSaveStatus.Visibility = Visibility.Visible;
+            if (sender == TextBoxTorusNcMachineName)
+            {
+                ncMachine.name = TextBoxTorusNcMachineName.Text.Trim();
+            }
+            else if (sender == TextBoxTorusNcMachineId)
+            {
+                if (!int.TryParse(TextBoxTorusNcMachineId.Text, out int id) || id < 1)
+                {
+                    ncMachine.id = 1;
+                }
+                else
+                {
+                    ncMachine.id = id;
+                }
+            }
+            else if (sender == TextBoxTorusNcMachineAddress)
+            {
+                ncMachine.address = TextBoxTorusNcMachineAddress.Text.Trim();
+            }
+            else if (sender == TextBoxTorusNcMachinePort)
+            {
+                if (!int.TryParse(TextBoxTorusNcMachinePort.Text, out int port) || port < 0 || port > 65535)
+                {
+                    ncMachine.port = 0;
+                }
+                else
+                {
+                    ncMachine.port = port;
+                }
+            }
+            else if (sender == TextBoxTorusNcMachineExDllPath)
+            {
+                ncMachine.exDllPath = TextBoxTorusNcMachineExDllPath.Text.Trim();
+            }
+            else if (sender == TextBoxTorusNcMachineUsername)
+            {
+                ncMachine.username = TextBoxTorusNcMachineUsername.Text.Trim();
+            }
+            else if (sender == TextBoxTorusNcMachinePassword)
+            {
+                ncMachine.password = TextBoxTorusNcMachinePassword.Text.Trim();
+            }
+            ListViewMachineList.Items.Refresh();
         }
     }
 }

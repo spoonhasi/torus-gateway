@@ -28,22 +28,6 @@ namespace TorusGateway
         public const string ConfigFileName = "config.ini";
     }
 
-    public class NCmachine
-    {
-        public bool activate { get; set; } = false;
-        public string name { get; set; } = "";
-        public int id { get; set; } = 0;
-        public string vendorCode { get; set; } = "";
-        public string address { get; set; } = "";
-        public int port { get; set; } = 0;
-        public string exDllPath { get; set; } = "";
-        public string connectCode { get; set; } = "";
-        public string ncVersionCode { get; set; } = "";
-        public string toolSystem { get; set; } = "";
-        public string username { get; set; } = "";
-        public string password { get; set; } = "";
-    }
-
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
@@ -150,15 +134,16 @@ namespace TorusGateway
                 {
                     if (!isExpanded)
                     {
+                        ButtonExpand.Content = "▲";
                         this.Height = ExpandedHeight;
                         this.Width = ExpandedWidth;
                     }
                     else
                     {
+                        ButtonExpand.Content = "▼";
                         this.Height = CollapsedHeight;
                         this.Width = CollapsedWidth;
                     }
-
                     isExpanded = !isExpanded;
                 }
             }
