@@ -13,6 +13,7 @@ namespace TorusGateway.WebServer
     [Route("[controller]/machine/ncpath")]
     public class FileController : ControllerBase
     {
+        //ncpath 쿼리 경로의 파일 다운로드를 위한 Get입니다. 일단 TORUS를 통해 NC로부터 게이트웨이가 구동되는 PC에 파일을 다운로드한 후에 요청한 클라이언트에 해당 파일을 제공합니다.
         [HttpGet]
         public ActionResult<string> GetTorusDownloadFile()
         {
@@ -73,6 +74,7 @@ namespace TorusGateway.WebServer
             }
         }
 
+        //ncpath 쿼리 경로로의 파일 업로드를 위한 PUT입니다. 일단 게이트웨이가 구동되는 PC에 파일 저장하고 해당 파일을 TORUS를 통해 NC로 전송합니다.
         [HttpPut]
         public async Task<ActionResult<string>> PutTorusUploadFile(IFormFile file)
         {
@@ -145,6 +147,7 @@ namespace TorusGateway.WebServer
             }
         }
 
+        //ncpath 쿼리 경로의 파일을 삭제합니다.
         [HttpDelete]
         public ActionResult<string> DeleteTorusUploadFile()
         {
