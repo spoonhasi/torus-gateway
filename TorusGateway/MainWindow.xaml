@@ -1,33 +1,73 @@
-﻿<Window x:Class="TorusGateway.MainWindow"
+<Window x:Class="TorusGateway.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:TorusGateway"
-        xmlns:torusControl="clr-namespace:TorusGateway.Torus"
         mc:Ignorable="d"
-        Title="TorusGateway v1.1" Height="600" Width="1050">
-    <Grid>
+        Title="TORUS Gateway" Height="400" Width="600"
+        Background="{StaticResource BackgroundBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="Segoe UI">
+    <Grid Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="110"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
+
+        <!-- 상단 컨트롤 영역 -->
         <Grid Grid.Row="0">
-            <Button x:Name="ButtonTorusConnect" Content="Torus Connect" Width="120" HorizontalAlignment="Left" Margin="10,10,0,0" VerticalAlignment="Top" Click="Button_Click"/>
-            <Button x:Name="ButtonWebServerOpen" Content="WebServer Open" Width="120" HorizontalAlignment="Left" Margin="10,40,0,0" VerticalAlignment="Top" Click="Button_Click"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="150,40,0,0" Width="200">
-                <TextBlock TextWrapping="Wrap" Text="Server Host:" FontFamily="Consolas" Width="80" Height="20"  VerticalAlignment="Top" HorizontalAlignment="Left"/>
-                <TextBox x:Name="TextBoxWebServerHost" FontFamily="Consolas" Text="0.0.0.0" Width="120"/>
+            <StackPanel HorizontalAlignment="Left">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                    <Button x:Name="ButtonTorusConnect" Content="TORUS Connect" Width="120" Click="Button_Click"/>
+                    <Button x:Name="ButtonTorusSetting" Content="TORUS Settings" Width="110" Margin="10,0,0,0" Click="Button_Click"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                    <Button x:Name="ButtonWebServerOpen" Content="WebServer Open" Width="120" Click="Button_Click"/>
+                    <TextBlock Text="Server Host:" FontFamily="Consolas" VerticalAlignment="Center" Margin="15,0,5,0"/>
+                    <TextBox x:Name="TextBoxWebServerHost" FontFamily="Consolas" Width="120" VerticalAlignment="Center"/>
+                    <TextBlock Text="Server Port:" FontFamily="Consolas" VerticalAlignment="Center" Margin="15,0,5,0"/>
+                    <TextBox x:Name="TextBoxWebServerPort" FontFamily="Consolas" Width="80" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Button x:Name="ButtonWebServerClose" Content="WebServer Close" Width="120" HorizontalAlignment="Left" Click="Button_Click"/>
             </StackPanel>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="375,40,0,0" Width="200">
-                <TextBlock TextWrapping="Wrap" Text="Server Port:" FontFamily="Consolas" Width="80" Height="20" VerticalAlignment="Top" HorizontalAlignment="Left"/>
-                <TextBox x:Name="TextBoxWebServerPort" FontFamily="Consolas" Text="5001" Width="120"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                <Button x:Name="ButtonAbout" Content="About" Width="60" Click="Button_Click"/>
+<Button x:Name="ButtonMinimizeToTray" Content="To Tray" Width="80" Margin="5,0,0,0" Click="Button_Click"/>
+                <Button x:Name="ButtonExit" Content="Exit" Width="60" Margin="5,0,0,0" Click="Button_Click"/>
             </StackPanel>
-            <Button x:Name="ButtonWebServerClose" Content="WebServer Close" Width="120" HorizontalAlignment="Left" Margin="10,70,0,0" VerticalAlignment="Top" Click="Button_Click"/>
-            <Button x:Name="ButtonExpand" Content="▼" BorderThickness="0" Click="Button_Click" Background="Transparent" VerticalAlignment="Top" Margin="0, 90, 0, 0" Height="20" FontSize="12"/>
         </Grid>
-        <Grid Grid.Row="1">
-            <torusControl:MachineListControl ConfigFilePath="config.ini"/>
+
+        <!-- 로그 영역 -->
+        <Grid Grid.Row="1" Margin="0,10,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="API Request Log" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="4,0,0,4"/>
+            <ListBox Grid.Row="1" x:Name="ListBoxApiLog"
+                     Background="#0C0C0C"
+                     BorderBrush="{StaticResource BorderBrush}"
+                     VirtualizingStackPanel.IsVirtualizing="True"
+                     VirtualizingStackPanel.VirtualizationMode="Recycling"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Foreground" Value="#00FF41"/>
+                        <Setter Property="FontFamily" Value="Consolas"/>
+                        <Setter Property="FontSize" Value="11"/>
+                        <Setter Property="Padding" Value="4,1"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+            </ListBox>
         </Grid>
     </Grid>
 </Window>

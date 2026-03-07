@@ -1,16 +1,48 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace TorusGateway.WebServer
 {
-    public class WebServer
+    public class RequestLoggingMiddleware
+    {
+        private readonly RequestDelegate _next;
+
+        // WPF UI에서 구독할 static 이벤트
+        public static event Action<string>? RequestLogged;
+
+        public RequestLoggingMiddleware(RequestDelegate next)
+        {
+            _next = next;
+        }
+
+        public async Task InvokeAsync(HttpContext context)
+        {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            await _next(context);
+            stopwatch.Stop();
+
+            string clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "-";
+            string method = context.Request.Method;
+            string path = context.Request.Path + context.Request.QueryString;
+            int statusCode = context.Response.StatusCode;
+            long elapsedMs = stopwatch.ElapsedMilliseconds;
+
+            // favicon 요청은 로그에서 제외
+            if (context.Request.Path.StartsWithSegments("/favicon.ico"))
+                return;
+
+            string timestamp = DateTime.Now.ToString("HH:mm:ss");
+            string logEntry = $"[{timestamp}] {clientIp,-15} {method,-6} {path,-40} {statusCode}  {elapsedMs}ms";
+
+            RequestLogged?.Invoke(logEntry);
+        }
+    }
+
+    public class WebServer : IDisposable
     {
         //ASP.NET Core는 소스코드에서 아래 기준에 맞는 컨트롤러를 자동으로 찾습니다.
         //Class 이름이 Controller로 끝납니다. 예: 'HomeController', 'ValuesController'
@@ -18,6 +50,7 @@ namespace TorusGateway.WebServer
         //Controller Class는 반드시 Public이어야 합니다.
 
         private readonly IHost _webHost;//웹서버의 호스팅 환경 관리 변수
+        private bool _disposed;
 
         public WebServer(string host, int port)
         {
@@ -32,12 +65,24 @@ namespace TorusGateway.WebServer
 
         public void Start()
         {
-            _webHost.RunAsync();  // 웹 서버를 비동기적으로 실행합니다.
+            _ = _webHost.RunAsync().ContinueWith(t =>  // 웹 서버를 비동기적으로 실행합니다.
+            {
+                System.Diagnostics.Debug.WriteLine($"웹 서버 시작 실패: {t.Exception?.InnerException?.Message}");
+            }, TaskContinuationOptions.OnlyOnFaulted);
         }
 
         public async Task StopAsync()
         {
             await _webHost.StopAsync();  // 웹 서버를 비동기적으로 정지합니다.
+        }
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _webHost.Dispose();
+                _disposed = true;
+            }
         }
     }
 
@@ -61,16 +106,12 @@ namespace TorusGateway.WebServer
 
         public static void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
-            //app.Run(async (context) =>
-            //{
-            //    await context.Response.WriteAsync("Hello, World!");
-            //});
-            //return;
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();  // 개발 중 에러 페이지를 활성화합니다.
             }
 
+            app.UseMiddleware<RequestLoggingMiddleware>();
             app.UseRouting();
 
             // CORS 미들웨어 사용

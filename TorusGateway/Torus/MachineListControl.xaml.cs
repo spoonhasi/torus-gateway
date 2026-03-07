@@ -1,22 +1,12 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
-using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Xml.Linq;
 
 namespace TorusGateway.Torus
@@ -77,6 +67,13 @@ namespace TorusGateway.Torus
             TextBlockSaveStatus.Visibility = Visibility.Hidden;
             ListViewMachineList.ItemsSource = ncMachineList_;
             LoadPath();
+        }
+
+        private static void SelectComboBoxItem(ComboBox comboBox, string targetValue)
+        {
+            foreach (ComboBoxItem item in comboBox.Items)
+                if (string.Equals(item.Content.ToString(), targetValue, StringComparison.OrdinalIgnoreCase))
+                    { comboBox.SelectedItem = item; break; }
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)
@@ -164,7 +161,7 @@ namespace TorusGateway.Torus
         {
             if (sender == ListViewMachineList)
             {
-                if (ListViewMachineList.SelectedItem is not NCmachine ncMachine)
+                if (ListViewMachineList.SelectedItem is not NCmachine)
                 {
                     ClearMachineListItem();
                 }
@@ -389,62 +386,6 @@ namespace TorusGateway.Torus
             MessageBox.Show("MachineList.xml 파일을 변경하였습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        private void SaveMachineListItem()
-        {
-            if (ListViewMachineList.SelectedItem is not NCmachine ncMachine)
-            {
-                return;
-            }
-            if (TextBoxTorusNcMachineName.Text.Trim() == "")
-            {
-                MessageBox.Show("name은 비어있을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            if (!int.TryParse(TextBoxTorusNcMachineId.Text, out int id) || id < 1)
-            {
-                MessageBox.Show("id는 1 이상의 정수여야 합니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            if (!int.TryParse(TextBoxTorusNcMachinePort.Text, out int port) || port < 0 || port > 65535)
-            {
-                MessageBox.Show("port는 0 이상, 65535 이하의 정수여야 합니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            string activate = ((ComboBoxItem)ComboBoxTorusNcMachineActivate.SelectedItem)?.Content.ToString().ToLowerInvariant();
-            if (activate == "true")
-            {
-                ncMachine.activate = true;
-            }
-            else
-            {
-                ncMachine.activate = false;
-            }
-            ncMachine.name = TextBoxTorusNcMachineName.Text.Trim();
-            ncMachine.id = id;
-            ncMachine.vendorCode = ((ComboBoxItem)ComboBoxTorusNcMachineVendorCode.SelectedItem)?.Content.ToString();
-            ncMachine.address = TextBoxTorusNcMachineAddress.Text.Trim();
-            ncMachine.port = port;
-            ncMachine.exDllPath = TextBoxTorusNcMachineExDllPath.Text.Trim();
-            ncMachine.connectCode = ((ComboBoxItem)ComboBoxTorusNcMachineConnectCode.SelectedItem)?.Content.ToString();
-            ncMachine.ncVersionCode = ((ComboBoxItem)ComboBoxTorusNcMachineNcVersionCode.SelectedItem)?.Content.ToString();
-            ncMachine.toolSystem = ((ComboBoxItem)ComboBoxTorusNcMachineToolSystem.SelectedItem)?.Content.ToString();
-            ncMachine.username = TextBoxTorusNcMachineUsername.Text.Trim();
-            ncMachine.password = TextBoxTorusNcMachinePassword.Text.Trim();
-            ListViewMachineList.Items.Refresh();
-        }
-
-        private void CancelMachineListItem()
-        {
-            if (ListViewMachineList.SelectedItem is not NCmachine ncMachine)
-            {
-                ClearMachineListItem();
-            }
-            else
-            {
-                LoadMachineListItem();
-            }
-        }
-
         private void AddMachineListItem()
         {
             NCmachine machine = new();
@@ -479,7 +420,6 @@ namespace TorusGateway.Torus
             {
                 return;
             }
-            var selectedItem = ListViewMachineList.SelectedItem as NCmachine;
             var sortedList = new ObservableCollection<NCmachine>(ncMachineList_.OrderBy(x => x.id));
             ncMachineList_ = sortedList;
             ListViewMachineList.ItemsSource = ncMachineList_;
@@ -510,82 +450,31 @@ namespace TorusGateway.Torus
             {
                 return;
             }
-            bool isHidden = false;
-            if (TextBlockSaveStatus.Visibility == Visibility.Hidden)
-            {
-                isHidden = true;
-            }
-            string targetValue = ncMachine.activate.ToString();
-            foreach (ComboBoxItem item in ComboBoxTorusNcMachineActivate.Items)
-            {
-                if (string.Equals(item.Content.ToString(), targetValue, StringComparison.OrdinalIgnoreCase))
-                {
-                    ComboBoxTorusNcMachineActivate.SelectedItem = item;
-                    break;
-                }
-            }
-            targetValue = ncMachine.name;
-            TextBoxTorusNcMachineName.Text = targetValue;
-            targetValue = ncMachine.id.ToString();
-            TextBoxTorusNcMachineId.Text = targetValue;
-            targetValue = ncMachine.vendorCode;
-            foreach (ComboBoxItem item in ComboBoxTorusNcMachineVendorCode.Items)
-            {
-                if (string.Equals(item.Content.ToString(), targetValue, StringComparison.OrdinalIgnoreCase))
-                {
-                    ComboBoxTorusNcMachineVendorCode.SelectedItem = item;
-                    break;
-                }
-            }
-            targetValue = ncMachine.address;
-            TextBoxTorusNcMachineAddress.Text = targetValue;
-            targetValue = ncMachine.port.ToString();
-            TextBoxTorusNcMachinePort.Text = targetValue;
-            targetValue = ncMachine.exDllPath;
-            TextBoxTorusNcMachineExDllPath.Text = targetValue;
-            targetValue = ncMachine.connectCode;
-            if (targetValue.Trim() == "")
-            {
-                targetValue = "Default";
-            }
-            foreach (ComboBoxItem item in ComboBoxTorusNcMachineConnectCode.Items)
-            {
-                if (string.Equals(item.Content.ToString(), targetValue, StringComparison.OrdinalIgnoreCase))
-                {
-                    ComboBoxTorusNcMachineConnectCode.SelectedItem = item;
-                    break;
-                }
-            }
-            targetValue = ncMachine.ncVersionCode;
-            if (targetValue.Trim() == "")
-            {
-                targetValue = "Default";
-            }
-            foreach (ComboBoxItem item in ComboBoxTorusNcMachineNcVersionCode.Items)
-            {
-                if (string.Equals(item.Content.ToString(), targetValue, StringComparison.OrdinalIgnoreCase))
-                {
-                    ComboBoxTorusNcMachineNcVersionCode.SelectedItem = item;
-                    break;
-                }
-            }
-            targetValue = ncMachine.toolSystem;
-            if (targetValue.Trim() == "")
-            {
-                targetValue = "Default";
-            }
-            foreach (ComboBoxItem item in ComboBoxTorusNcMachineToolSystem.Items)
-            {
-                if (string.Equals(item.Content.ToString(), targetValue, StringComparison.OrdinalIgnoreCase))
-                {
-                    ComboBoxTorusNcMachineToolSystem.SelectedItem = item;
-                    break;
-                }
-            }
-            targetValue = ncMachine.username;
-            TextBoxTorusNcMachineUsername.Text = targetValue;
-            targetValue = ncMachine.password;
-            TextBoxTorusNcMachinePassword.Text = targetValue;
+            bool isHidden = TextBlockSaveStatus.Visibility == Visibility.Hidden;
+
+            SelectComboBoxItem(ComboBoxTorusNcMachineActivate, ncMachine.activate.ToString());
+            TextBoxTorusNcMachineName.Text = ncMachine.name;
+            TextBoxTorusNcMachineId.Text = ncMachine.id.ToString();
+            SelectComboBoxItem(ComboBoxTorusNcMachineVendorCode, ncMachine.vendorCode);
+            TextBoxTorusNcMachineAddress.Text = ncMachine.address;
+            TextBoxTorusNcMachinePort.Text = ncMachine.port.ToString();
+            TextBoxTorusNcMachineExDllPath.Text = ncMachine.exDllPath;
+
+            string connectCode = ncMachine.connectCode;
+            if (connectCode.Trim() == "") connectCode = "Default";
+            SelectComboBoxItem(ComboBoxTorusNcMachineConnectCode, connectCode);
+
+            string ncVersionCode = ncMachine.ncVersionCode;
+            if (ncVersionCode.Trim() == "") ncVersionCode = "Default";
+            SelectComboBoxItem(ComboBoxTorusNcMachineNcVersionCode, ncVersionCode);
+
+            string toolSystem = ncMachine.toolSystem;
+            if (toolSystem.Trim() == "") toolSystem = "Default";
+            SelectComboBoxItem(ComboBoxTorusNcMachineToolSystem, toolSystem);
+
+            TextBoxTorusNcMachineUsername.Text = ncMachine.username;
+            TextBoxTorusNcMachinePassword.Text = ncMachine.password;
+
             if (isHidden)
             {
                 TextBlockSaveStatus.Visibility = Visibility.Hidden;

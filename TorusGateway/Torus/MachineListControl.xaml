@@ -1,130 +1,117 @@
-﻿<UserControl x:Class="TorusGateway.Torus.MachineListControl"
+<UserControl x:Class="TorusGateway.Torus.MachineListControl"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:TorusGateway.Torus"
-             mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="1050">
-    <Grid Margin="10,10,10,10">
+             mc:Ignorable="d"
+             d:DesignHeight="500" d:DesignWidth="1050">
+    <UserControl.Resources>
+        <!-- Row 2 입력 영역의 ComboBox/TextBox 높이 통일 -->
+        <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="3,2,6,2"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
+    <Grid Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="50"/>
-            <RowDefinition Height="80"/>
-            <RowDefinition Height="130"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <Grid Grid.Row="0">
-            <StackPanel>
-                <TextBlock Text="Torus의 설정(MachineList.xml 등)을 바꿀 수 있는 메뉴입니다. Torus는 플랫폼이므로 특정 앱이 Torus의 설정을 바꾸면 다른 앱에 예기치 못한 오류를 발생시킬수 있습니다."/>
-                <TextBlock Text="따라서 Torus의 설정 변경은 오로지 Torus에서 해야 합니다. 본 앱은 Torus 테스트용 앱이므로, 테스트 편의성을 제공하기 위해 Torus의 일부 설정을 바꾸는 기능을 제공합니다."/>
-            </StackPanel>
-        </Grid>
-        <Grid Grid.Row="1">
+
+        <!-- Row 0: 설명 -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="Torus의 설정(MachineList.xml 등)을 바꿀 수 있는 메뉴입니다. Torus는 플랫폼이므로 특정 앱이 Torus의 설정을 바꾸면 다른 앱에 예기치 못한 오류를 발생시킬수 있습니다." TextWrapping="Wrap"/>
+            <TextBlock Text="따라서 Torus의 설정 변경은 오로지 Torus에서 해야 합니다. 본 앱은 Torus 테스트용 앱이므로, 테스트 편의성을 제공하기 위해 Torus의 일부 설정을 바꾸는 기능을 제공합니다." TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Row 1: 경로 설정 -->
+        <Grid Grid.Row="1" Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="50"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
+
+            <!-- 경로 행들 (단일 Grid로 컬럼 정렬) -->
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <Grid Grid.Row="0" Margin="0,2,5,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="190"/>
-                        <ColumnDefinition Width="80"/>
-                        <ColumnDefinition Width="80"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Torus 실행 파일 경로:" Grid.Column="0"/>
-                    <Button x:Name="ButtonTorusRunPath" Content="경로 지정" Width="70" Click="Button_Click" Grid.Column="1"/>
-                    <Button x:Name="ButtonTorusRunExecute" Content="Torus 실행" Width="70" Click="Button_Click" Grid.Column="2"/>
-                    <TextBox x:Name="TextBoxTorusRunPath" Margin="5,0,0,0" Grid.Column="3"/>
-                </Grid>
-                <Grid Grid.Row="1" Margin="0,2,5,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="190"/>
-                        <ColumnDefinition Width="80"/>
-                        <ColumnDefinition Width="80"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Torus 종료 파일 경로:" Grid.Column="0"/>
-                    <Button x:Name="ButtonTorusExitPath" Content="경로 지정" Width="70" Click="Button_Click" Grid.Column="1"/>
-                    <Button x:Name="ButtonTorusExitExecute" Content="Torus 종료" Width="70" Click="Button_Click" Grid.Column="2"/>
-                    <TextBox x:Name="TextBoxTorusExitPath" Margin="5,0,0,0" Grid.Column="3"/>
-                </Grid>
-                <Grid Grid.Row="2" Margin="0,2,5,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="190"/>
-                        <ColumnDefinition Width="80"/>
-                        <ColumnDefinition Width="80"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Torus MachineList.xml 파일 경로:" Grid.Column="0"/>
-                    <Button x:Name="ButtonTorusMachineListPath" Content="경로 지정" Width="70" Click="Button_Click" Grid.Column="1"/>
-                    <TextBox x:Name="TextBoxTorusMachineListPath" Margin="5,0,0,0" Grid.Column="3"/>
-                </Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Torus 실행 파일 경로:" VerticalAlignment="Center" Margin="0,3"/>
+                <Button    Grid.Row="0" Grid.Column="1" x:Name="ButtonTorusRunPath" Content="경로 지정" Width="90" Margin="5,3" Click="Button_Click"/>
+                <Button    Grid.Row="0" Grid.Column="2" x:Name="ButtonTorusRunExecute" Content="Torus 실행" Width="90" Margin="5,3" Click="Button_Click"/>
+                <TextBox   Grid.Row="0" Grid.Column="3" x:Name="TextBoxTorusRunPath" Margin="5,3,0,3"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Torus 종료 파일 경로:" VerticalAlignment="Center" Margin="0,3"/>
+                <Button    Grid.Row="1" Grid.Column="1" x:Name="ButtonTorusExitPath" Content="경로 지정" Width="90" Margin="5,3" Click="Button_Click"/>
+                <Button    Grid.Row="1" Grid.Column="2" x:Name="ButtonTorusExitExecute" Content="Torus 종료" Width="90" Margin="5,3" Click="Button_Click"/>
+                <TextBox   Grid.Row="1" Grid.Column="3" x:Name="TextBoxTorusExitPath" Margin="5,3,0,3"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Torus MachineList.xml 파일 경로:" VerticalAlignment="Center" Margin="0,3"/>
+                <Button    Grid.Row="2" Grid.Column="1" x:Name="ButtonTorusMachineListPath" Content="경로 지정" Width="90" Margin="5,3" Click="Button_Click"/>
+                <TextBox   Grid.Row="2" Grid.Column="3" x:Name="TextBoxTorusMachineListPath" Margin="5,3,0,3"/>
             </Grid>
-            <Grid Grid.Column="1">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <Button x:Name="ButtonTorusPathSave" Click="Button_Click" Grid.Row="0" Margin="5,2,0,5">
-                    <TextBlock Text="경로 저장" TextWrapping="Wrap" Width="30" FontSize="10" TextAlignment="Center"/>
-                </Button>
-                <Button x:Name="ButtonTorusPathLoad" Click="Button_Click" Grid.Row="1" Margin="5,5,0,2">
-                    <TextBlock Text="경로 로드" TextWrapping="Wrap" Width="30" FontSize="10" TextAlignment="Center"/>
-                </Button>
-            </Grid>
+
+            <!-- 경로 저장/로드 버튼 -->
+            <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                <Button x:Name="ButtonTorusPathSave" Content="경로 저장" Width="90" Click="Button_Click" Margin="0,3"/>
+                <Button x:Name="ButtonTorusPathLoad" Content="경로 로드" Width="90" Click="Button_Click" Margin="0,3"/>
+            </StackPanel>
         </Grid>
-        <Grid Grid.Row="2" Margin="0,8,0,0">
+
+        <!-- Row 2: Machine 속성 편집 -->
+        <Grid Grid.Row="2" Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="190"/>
-                <ColumnDefinition Width="235"/>
-                <ColumnDefinition Width="400"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <Grid Grid.Column="0" Margin="0,0,5,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <Button x:Name="ButtonTorusMachineListRead" Grid.Row="0" Content="MachineList.xml 읽기" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="0,0,0,7.5" Click="Button_Click"/>
-                <Button x:Name="ButtonTorusMachineListWrite" Grid.Row="1" Content="MachineList.xml 쓰기" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="0,2.5,0,5" Click="Button_Click"/>
-                <TextBlock x:Name="TextBlockSaveStatus" Grid.Row="2" Text="변경사항이 저장되지 않았습니다." Foreground="Red"/>
-                <Button x:Name="ButtonTorusMachineListArrange" Grid.Row="3" Content="ID 순으로 정렬" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="0,7.5,0,0" Click="Button_Click"/>
-            </Grid>
-            <Grid Grid.Column="1" Margin="5,0,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <StackPanel Orientation="Horizontal" Grid.Row="0">
-                    <TextBlock Text="activate :" Width="80"/>
-                    <ComboBox x:Name="ComboBoxTorusNcMachineActivate" Width="150" HorizontalAlignment="Stretch" SelectionChanged="ComboBox_SelectionChanged">
+
+            <!-- 액션 버튼 -->
+            <StackPanel Grid.Column="0" Margin="0,0,15,0" Width="180">
+                <Button x:Name="ButtonTorusMachineListRead" Content="MachineList.xml 읽기" HorizontalAlignment="Stretch" Margin="0,2" Click="Button_Click"/>
+                <Button x:Name="ButtonTorusMachineListWrite" Content="MachineList.xml 쓰기" HorizontalAlignment="Stretch" Margin="0,2" Click="Button_Click"/>
+                <TextBlock x:Name="TextBlockSaveStatus" Text="변경사항이 저장되지 않았습니다." Foreground="Red" Margin="0,6,0,6"/>
+                <Button x:Name="ButtonTorusMachineListArrange" Content="ID 순으로 정렬" HorizontalAlignment="Stretch" Margin="0,2" Click="Button_Click"/>
+            </StackPanel>
+
+            <!-- 좌측 필드 (activate ~ port) -->
+            <StackPanel Grid.Column="1" Margin="0,0,15,0">
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="activate :" Width="85" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="ComboBoxTorusNcMachineActivate" Width="150" SelectionChanged="ComboBox_SelectionChanged">
                         <ComboBoxItem Content="True"/>
                         <ComboBoxItem Content="False"/>
                     </ComboBox>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Grid.Row="1">
-                    <TextBlock Text="name :" Width="80"/>
-                    <TextBox x:Name="TextBoxTorusNcMachineName" Width="150" HorizontalAlignment="Stretch" TextChanged="TextBox_TextChanged"/>
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="name :" Width="85" VerticalAlignment="Center"/>
+                    <TextBox x:Name="TextBoxTorusNcMachineName" Width="150" TextChanged="TextBox_TextChanged"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Grid.Row="2">
-                    <TextBlock Text="id :" Width="80"/>
-                    <TextBox x:Name="TextBoxTorusNcMachineId" Width="150" HorizontalAlignment="Stretch" TextChanged="TextBox_TextChanged"/>
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="id :" Width="85" VerticalAlignment="Center"/>
+                    <TextBox x:Name="TextBoxTorusNcMachineId" Width="150" TextChanged="TextBox_TextChanged"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Grid.Row="3">
-                    <TextBlock Text="vendorCode :" Width="80"/>
-                    <ComboBox x:Name="ComboBoxTorusNcMachineVendorCode" Width="150" HorizontalAlignment="Stretch" SelectionChanged="ComboBox_SelectionChanged">
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="vendorCode :" Width="85" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="ComboBoxTorusNcMachineVendorCode" Width="150" SelectionChanged="ComboBox_SelectionChanged">
                         <ComboBoxItem Content="Fanuc"/>
                         <ComboBoxItem Content="Siemens"/>
                         <ComboBoxItem Content="CSCAM"/>
@@ -134,31 +121,25 @@
                         <ComboBoxItem Content="Heidenhain"/>
                     </ComboBox>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Grid.Row="4">
-                    <TextBlock Text="address :" Width="80"/>
-                    <TextBox x:Name="TextBoxTorusNcMachineAddress" Width="150" HorizontalAlignment="Stretch" TextChanged="TextBox_TextChanged"/>
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="address :" Width="85" VerticalAlignment="Center"/>
+                    <TextBox x:Name="TextBoxTorusNcMachineAddress" Width="150" TextChanged="TextBox_TextChanged"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Grid.Row="5">
-                    <TextBlock Text="port :" Width="80"/>
-                    <TextBox x:Name="TextBoxTorusNcMachinePort" Width="150" HorizontalAlignment="Stretch" TextChanged="TextBox_TextChanged"/>
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="port :" Width="85" VerticalAlignment="Center"/>
+                    <TextBox x:Name="TextBoxTorusNcMachinePort" Width="150" TextChanged="TextBox_TextChanged"/>
                 </StackPanel>
-            </Grid>
-            <Grid Grid.Column="2" Margin="30,0,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <StackPanel Orientation="Horizontal" Grid.Row="0">
-                    <TextBlock Text="exDllPath :" Width="100"/>
-                    <TextBox x:Name="TextBoxTorusNcMachineExDllPath" Width="270" HorizontalAlignment="Stretch" TextChanged="TextBox_TextChanged"/>
+            </StackPanel>
+
+            <!-- 우측 필드 (exDllPath ~ password) -->
+            <StackPanel Grid.Column="2" Margin="0,0,15,0">
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="exDllPath :" Width="105" VerticalAlignment="Center"/>
+                    <TextBox x:Name="TextBoxTorusNcMachineExDllPath" Width="270" TextChanged="TextBox_TextChanged"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Grid.Row="1">
-                    <TextBlock Text="connectCode :" Width="100"/>
-                    <ComboBox x:Name="ComboBoxTorusNcMachineConnectCode" Width="270" HorizontalAlignment="Stretch" SelectionChanged="ComboBox_SelectionChanged">
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="connectCode :" Width="105" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="ComboBoxTorusNcMachineConnectCode" Width="270" SelectionChanged="ComboBox_SelectionChanged">
                         <ComboBoxItem Content="Default"/>
                         <ComboBoxItem Content="Ethernet"/>
                         <ComboBoxItem Content="OPCUA"/>
@@ -167,9 +148,9 @@
                         <ComboBoxItem Content="MTConnect"/>
                     </ComboBox>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Grid.Row="2">
-                    <TextBlock Text="ncVersionCode :" Width="100"/>
-                    <ComboBox x:Name="ComboBoxTorusNcMachineNcVersionCode" Width="270" HorizontalAlignment="Stretch" SelectionChanged="ComboBox_SelectionChanged">
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="ncVersionCode :" Width="105" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="ComboBoxTorusNcMachineNcVersionCode" Width="270" SelectionChanged="ComboBox_SelectionChanged">
                         <ComboBoxItem Content="Default"/>
                         <ComboBoxItem Content="MitsubishiM700M"/>
                         <ComboBoxItem Content="MitsubishiM700L"/>
@@ -181,53 +162,49 @@
                         <ComboBoxItem Content="Siemens49"/>
                     </ComboBox>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Grid.Row="3">
-                    <TextBlock Text="toolSystem :" Width="100"/>
-                    <ComboBox x:Name="ComboBoxTorusNcMachineToolSystem" Width="270" HorizontalAlignment="Stretch" SelectionChanged="ComboBox_SelectionChanged">
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="toolSystem :" Width="105" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="ComboBoxTorusNcMachineToolSystem" Width="270" SelectionChanged="ComboBox_SelectionChanged">
                         <ComboBoxItem Content="Default"/>
                         <ComboBoxItem Content="ToolLife"/>
                         <ComboBoxItem Content="ToolManager"/>
                     </ComboBox>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Grid.Row="4">
-                    <TextBlock Text="username :" Width="100"/>
-                    <TextBox x:Name="TextBoxTorusNcMachineUsername" Width="270" HorizontalAlignment="Stretch" TextChanged="TextBox_TextChanged"/>
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="username :" Width="105" VerticalAlignment="Center"/>
+                    <TextBox x:Name="TextBoxTorusNcMachineUsername" Width="270" TextChanged="TextBox_TextChanged"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Grid.Row="5">
-                    <TextBlock Text="password :" Width="100"/>
-                    <TextBox x:Name="TextBoxTorusNcMachinePassword" Width="270" HorizontalAlignment="Stretch" TextChanged="TextBox_TextChanged"/>
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="password :" Width="105" VerticalAlignment="Center"/>
+                    <TextBox x:Name="TextBoxTorusNcMachinePassword" Width="270" TextChanged="TextBox_TextChanged"/>
                 </StackPanel>
-            </Grid>
-            <Grid Grid.Column="3" Margin="30,0,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <Button x:Name="ButtonTorusMachineListItemAdd" Content="신규 Machine 추가" Margin="0,5,0,2.5" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Click="Button_Click" Grid.Row="2"/>
-                <Button x:Name="ButtonTorusMachineListItemRemove" Content="선택 Machine 삭제" Margin="0,7.5,0,0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Click="Button_Click" Grid.Row="3"/>
-            </Grid>
+            </StackPanel>
+
+            <!-- Machine 추가/삭제 버튼 -->
+            <StackPanel Grid.Column="3" VerticalAlignment="Bottom">
+                <Button x:Name="ButtonTorusMachineListItemAdd" Content="신규 Machine 추가" Margin="0,2" Click="Button_Click"/>
+                <Button x:Name="ButtonTorusMachineListItemRemove" Content="선택 Machine 삭제" Margin="0,2" Click="Button_Click"/>
+            </StackPanel>
         </Grid>
-        <Grid Grid.Row="3" Margin="0,10,0,0">
-            <ListView x:Name="ListViewMachineList" d:ItemsSource="{d:SampleData ItemCount=2}"  SelectionChanged="ListView_SelectionChanged">
-                <ListView.View>
-                    <GridView>
-                        <GridViewColumn Header="activate" DisplayMemberBinding="{Binding activate}" Width="55"/>
-                        <GridViewColumn Header="name" DisplayMemberBinding="{Binding name}" Width="90"/>
-                        <GridViewColumn Header="id" DisplayMemberBinding="{Binding id}" Width="40"/>
-                        <GridViewColumn Header="vendorCode" DisplayMemberBinding="{Binding vendorCode}" Width="80"/>
-                        <GridViewColumn Header="address" DisplayMemberBinding="{Binding address}" Width="120"/>
-                        <GridViewColumn Header="port" DisplayMemberBinding="{Binding port}" Width="55"/>
-                        <GridViewColumn Header="exDllPath" DisplayMemberBinding="{Binding exDllPath}" Width="140"/>
-                        <GridViewColumn Header="connectCode" DisplayMemberBinding="{Binding connectCode}" Width="85"/>
-                        <GridViewColumn Header="ncVersionCode" DisplayMemberBinding="{Binding ncVersionCode}" Width="90"/>
-                        <GridViewColumn Header="toolSystem" DisplayMemberBinding="{Binding toolSystem}" Width="70"/>
-                        <GridViewColumn Header="username" DisplayMemberBinding="{Binding username}" Width="80"/>
-                        <GridViewColumn Header="password" DisplayMemberBinding="{Binding password}" Width="80"/>
-                    </GridView>
-                </ListView.View>
-            </ListView>
-        </Grid>
+
+        <!-- Row 3: Machine 목록 -->
+        <ListView Grid.Row="3" x:Name="ListViewMachineList" d:ItemsSource="{d:SampleData ItemCount=2}" SelectionChanged="ListView_SelectionChanged">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="activate" DisplayMemberBinding="{Binding activate}" Width="55"/>
+                    <GridViewColumn Header="name" DisplayMemberBinding="{Binding name}" Width="90"/>
+                    <GridViewColumn Header="id" DisplayMemberBinding="{Binding id}" Width="40"/>
+                    <GridViewColumn Header="vendorCode" DisplayMemberBinding="{Binding vendorCode}" Width="80"/>
+                    <GridViewColumn Header="address" DisplayMemberBinding="{Binding address}" Width="120"/>
+                    <GridViewColumn Header="port" DisplayMemberBinding="{Binding port}" Width="55"/>
+                    <GridViewColumn Header="exDllPath" DisplayMemberBinding="{Binding exDllPath}" Width="140"/>
+                    <GridViewColumn Header="connectCode" DisplayMemberBinding="{Binding connectCode}" Width="85"/>
+                    <GridViewColumn Header="ncVersionCode" DisplayMemberBinding="{Binding ncVersionCode}" Width="90"/>
+                    <GridViewColumn Header="toolSystem" DisplayMemberBinding="{Binding toolSystem}" Width="70"/>
+                    <GridViewColumn Header="username" DisplayMemberBinding="{Binding username}" Width="80"/>
+                    <GridViewColumn Header="password" DisplayMemberBinding="{Binding password}" Width="80"/>
+                </GridView>
+            </ListView.View>
+        </ListView>
     </Grid>
 </UserControl>

@@ -1,64 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.Json.Serialization;
+using System;
 using System.Text.Json;
-using System.Threading.Tasks;
 using IntelligentApiCS;
 
 namespace TorusGateway.Torus
 {
     public class Torus
     {
-        public class ItemObject
-        {
-            [JsonPropertyName("value")]
-            public List<JsonElement>? Value { get; set; }
-
-            [JsonPropertyName("status")]
-            public int Status { get; set; }
-
-            [JsonPropertyName("datatype")]
-            public string? DataType { get; set; }
-
-            [JsonPropertyName("time")]
-            public string? Timestamp { get; set; }
-
-            [JsonPropertyName("address")]
-            public string? Address { get; set; }
-
-            [JsonPropertyName("filter")]
-            public string? Filter { get; set; }
-
-            /*
-JsonValueKind 값 목록
-JsonValueKind.Undefined
-정의되지 않은 JSON 값. 일반적으로 잘못된 상태를 나타냅니다.
-
-JsonValueKind.Object
-JSON 객체를 나타냅니다. { "name": "value" }와 같은 형식을 가집니다.
-
-JsonValueKind.Array
-JSON 배열을 나타냅니다. [1, 2, 3]과 같은 형식을 가집니다.
-
-JsonValueKind.String
-JSON 문자열을 나타냅니다. "text"와 같은 형식을 가집니다.
-
-JsonValueKind.Number
-JSON 숫자를 나타냅니다. 42 또는 3.14와 같은 형식을 가집니다.
-
-JsonValueKind.True
-JSON 불리언 값 true를 나타냅니다.
-
-JsonValueKind.False
-JSON 불리언 값 false를 나타냅니다.
-
-JsonValueKind.Null
-JSON null 값을 나타냅니다.
-*/
-        }
-
         private static readonly object _lockInit = new();
         private static Torus? _instance;
 
@@ -118,7 +65,7 @@ JSON null 값을 나타냅니다.
             int result = Api.getData(address, filter, out Item item, true);
             if (item == null)
             {
-                return "{\"status\":" + result + "}";
+                return JsonSerializer.Serialize(new { status = result });
             }
             else
             {
@@ -130,25 +77,25 @@ JSON null 값을 나타냅니다.
         {
             Item InItem = Item.Parse(value);
             int result = Api.updateData(address, filter, InItem, out Item _);
-            return "{\"status\":" + result + "}";
+            return JsonSerializer.Serialize(new { status = result });
         }
 
         public string UploadFile(string localPath, string ncPath, int machineID)
         {
             int result = Api.UploadFile(localPath, ncPath, machineID);
-            return "{\"status\":" + result + "}";
+            return JsonSerializer.Serialize(new { status = result });
         }
 
         public string DownloadFile(string ncPath, string localPath, int machineID)
         {
             int result = Api.DownloadFile(ncPath, localPath, machineID);
-            return "{\"status\":" + result + "}";
+            return JsonSerializer.Serialize(new { status = result });
         }
 
         public string DeleteFile(string ncPath, int machineID)
         {
             int result = Api.CNCFileDelete(ncPath, out Item _, machineID);
-            return "{\"status\":" + result + "}";
+            return JsonSerializer.Serialize(new { status = result });
         }
     }
 }

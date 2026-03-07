@@ -1,12 +1,9 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Text.Json;
 
 namespace TorusGateway.WebServer
 {
@@ -14,51 +11,47 @@ namespace TorusGateway.WebServer
     [Route("[controller]")]
     public class MachineController : ControllerBase
     {
+        private readonly ILogger<MachineController> _logger;
+
+        public MachineController(ILogger<MachineController> logger)
+        {
+            _logger = logger;
+        }
+
+        private ContentResult ErrorResponse(int statusCode, string errorMessage)
+        {
+            var body = JsonSerializer.Serialize(new { status = -1, error = errorMessage });
+            return new ContentResult { Content = body, ContentType = "application/json", StatusCode = statusCode };
+        }
+
+        private (string address, string filter) BuildAddressAndFilter(string segments)
+        {
+            var segmentArray = segments.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            string address = "data://machine/" + string.Join("/", segmentArray);
+            string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+            return (address, filter);
+        }
+
         // GET machine/{*segments}
         [HttpGet("{*segments}")]
         public ActionResult<string> GetTorusGetData(string segments)
         {
             try
             {
-                // 동적 경로 세그먼트 처리
-                var segmentArray = segments.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-                // 동적 쿼리 매개변수를 읽어옴
-                var queryParameters = HttpContext.Request.Query;
-
-                // 쿼리 매개변수 로직 추가 (예시)
-                string address = "data://machine/" + $"{string.Join("/", segmentArray)}";
-                string filter = "";
-                bool firstParam = true;
-                foreach (var param in queryParameters)
-                {
-                    if (firstParam)
-                    {
-                        filter += $"{param.Key}={param.Value}";
-                        firstParam = false;
-                    }
-                    else
-                    {
-                        filter += $"&{param.Key}={param.Value}";
-                    }
-                }
-                string fullPath = address + "?" + filter;
-                //http://localhost:5000/machine/channel/axis/machinePosition?machine=1&channel=1&axis=1
+                var (address, filter) = BuildAddressAndFilter(segments);
 
                 string getDataResult = Torus.Torus.Instance.GetData(address, filter);
                 return new ContentResult
                 {
-                    Content = getDataResult,  // 이미 JSON 형식인 문자열
-                    ContentType = "application/json",  // JSON MIME 타입 설정
-                    StatusCode = 200  // 상태 코드 설정 (OK)
+                    Content = getDataResult,
+                    ContentType = "application/json",
+                    StatusCode = 200
                 };
             }
-            catch
+            catch (Exception ex)
             {
-                return new ContentResult
-                {
-                    StatusCode = 500
-                };
+                _logger.LogError(ex, "장비 데이터 조회 실패: {Segments}", segments);
+                return ErrorResponse(500, "장비 데이터 조회 중 오류가 발생했습니다");
             }
         }
 
@@ -68,33 +61,7 @@ namespace TorusGateway.WebServer
         {
             try
             {
-                /*
-curl -Method PUT "http://localhost:5001/machine/channel/variable/userVariable?machine=1&channel=1&variable=10" -Headers @{"Content-Type"="application/json"} -Body '{"value":[51.999]}'
-*/
-
-                // 동적 경로 세그먼트 처리
-                var segmentArray = segments.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-                // 동적 쿼리 매개변수를 읽어옴
-                var queryParameters = HttpContext.Request.Query;
-
-                // 쿼리 매개변수 로직 추가 (예시)
-                string address = "data://machine/" + $"{string.Join("/", segmentArray)}";
-                string filter = "";
-                bool firstParam = true;
-                foreach (var param in queryParameters)
-                {
-                    if (firstParam)
-                    {
-                        filter += $"{param.Key}={param.Value}";
-                        firstParam = false;
-                    }
-                    else
-                    {
-                        filter += $"&{param.Key}={param.Value}";
-                    }
-                }
-                //string fullPath = address + "?" + filter;
+                var (address, filter) = BuildAddressAndFilter(segments);
 
                 // 비동기적으로 원시 데이터를 읽어옴
                 using var reader = new StreamReader(Request.Body);
@@ -103,17 +70,15 @@ curl -Method PUT "http://localhost:5001/machine/channel/variable/userVariable?ma
                 string updateDataResult = Torus.Torus.Instance.UpdateData(address, filter, body);
                 return new ContentResult
                 {
-                    Content = updateDataResult,  // 이미 JSON 형식인 문자열
-                    ContentType = "application/json",  // JSON MIME 타입 설정
-                    StatusCode = 200  // 상태 코드 설정 (OK)
+                    Content = updateDataResult,
+                    ContentType = "application/json",
+                    StatusCode = 200
                 };
             }
-            catch
+            catch (Exception ex)
             {
-                return new ContentResult
-                {
-                    StatusCode = 500
-                };
+                _logger.LogError(ex, "장비 데이터 수정 실패: {Segments}", segments);
+                return ErrorResponse(500, "장비 데이터 수정 중 오류가 발생했습니다");
             }
         }
     }
