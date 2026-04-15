@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:TorusGateway"
         mc:Ignorable="d"
-        Title="TORUS Gateway" Height="400" Width="600"
+        Title="TORUS Gateway" Height="400" Width="850"
         Background="{StaticResource BackgroundBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="Segoe UI">
     <Grid Margin="10">
@@ -19,16 +19,24 @@
             <StackPanel HorizontalAlignment="Left">
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                     <Button x:Name="ButtonTorusConnect" Content="TORUS Connect" Width="120" Click="Button_Click"/>
-                    <Button x:Name="ButtonTorusSetting" Content="TORUS Settings" Width="110" Margin="10,0,0,0" Click="Button_Click"/>
+                    <Button x:Name="ButtonTorusSetting" Content="TORUS Settings" Width="120" Margin="5,0,0,0" Click="Button_Click"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                     <Button x:Name="ButtonWebServerOpen" Content="WebServer Open" Width="120" Click="Button_Click"/>
+                    <Button x:Name="ButtonWebServerClose" Content="WebServer Close" Width="120" Margin="5,0,0,0" Click="Button_Click"/>
                     <TextBlock Text="Server Host:" FontFamily="Consolas" VerticalAlignment="Center" Margin="15,0,5,0"/>
                     <TextBox x:Name="TextBoxWebServerHost" FontFamily="Consolas" Width="120" VerticalAlignment="Center"/>
                     <TextBlock Text="Server Port:" FontFamily="Consolas" VerticalAlignment="Center" Margin="15,0,5,0"/>
                     <TextBox x:Name="TextBoxWebServerPort" FontFamily="Consolas" Width="80" VerticalAlignment="Center"/>
+                    <TextBlock Text="Access:" FontFamily="Consolas" VerticalAlignment="Center" Margin="15,0,8,0"/>
+                    <RadioButton x:Name="RadioAccessAll" Content="Allow All" GroupName="AccessMode"
+                                 VerticalAlignment="Center" Margin="0,0,12,0" Checked="RadioAccess_Checked"/>
+                    <RadioButton x:Name="RadioAccessLocal" Content="Local Only" GroupName="AccessMode"
+                                 VerticalAlignment="Center" Margin="0,0,12,0" Checked="RadioAccess_Checked"
+                                 ToolTip="127.0.0.1 (same PC only)"/>
+                    <RadioButton x:Name="RadioAccessSpecific" Content="Specify IPs" GroupName="AccessMode"
+                                 VerticalAlignment="Center" Checked="RadioAccess_Checked"/>
                 </StackPanel>
-                <Button x:Name="ButtonWebServerClose" Content="WebServer Close" Width="120" HorizontalAlignment="Left" Click="Button_Click"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
                 <Button x:Name="ButtonAbout" Content="About" Width="60" Click="Button_Click"/>
@@ -37,14 +45,18 @@
             </StackPanel>
         </Grid>
 
-        <!-- 로그 영역 -->
+        <!-- 로그 영역 + IP 지정 패널 (우측) -->
         <Grid Grid.Row="1" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="API Request Log" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="4,0,0,4"/>
-            <ListBox Grid.Row="1" x:Name="ListBoxApiLog"
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="API Request Log" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="4,0,0,4"/>
+            <ListBox Grid.Row="1" Grid.Column="0" x:Name="ListBoxApiLog"
                      Background="#0C0C0C"
                      BorderBrush="{StaticResource BorderBrush}"
                      VirtualizingStackPanel.IsVirtualizing="True"
@@ -68,6 +80,30 @@
                     </Style>
                 </ListBox.ItemContainerStyle>
             </ListBox>
+
+            <!-- IP 지정 패널: 로그 우측에 배치. Visibility 토글 시 로그의 가로 폭만 변하고 세로는 그대로 유지됨 -->
+            <Border x:Name="PanelAllowedIPs"
+                    Grid.Row="0" Grid.RowSpan="2" Grid.Column="1"
+                    Margin="10,0,0,0"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    Padding="6"
+                    Visibility="Collapsed">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="Allowed IPs" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,4"/>
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBox x:Name="TextBoxNewIP" FontFamily="Consolas" Width="200" VerticalAlignment="Center"
+                                 ToolTip="IP or CIDR. e.g., 192.168.1.10 or 192.168.1.0/24"/>
+                        <Button x:Name="ButtonAddIP" Content="Add" Width="50" Margin="5,0,0,0" Click="Button_Click"/>
+                        <Button x:Name="ButtonRemoveIP" Content="Remove" Width="70" Margin="5,0,0,0" Click="Button_Click"/>
+                    </StackPanel>
+                    <ListBox Grid.Row="2" x:Name="ListBoxAllowedIPs" Width="340" FontFamily="Consolas"/>
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 </Window>

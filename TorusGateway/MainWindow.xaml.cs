@@ -40,6 +40,9 @@ namespace TorusGateway
             ButtonWebServerOpen.IsEnabled = false;
             ButtonWebServerClose.IsEnabled = false;
 
+            // 이전 세션의 비정상 종료로 남은 임시 파일 디렉토리 정리.
+            FileController.CleanupOrphanedTempDirs();
+
             LoadSettings();
 
             ListBoxApiLog.ItemsSource = _logEntries;
@@ -126,7 +129,7 @@ namespace TorusGateway
             if (!_isActuallyClosing)
             {
                 e.Cancel = true;
-                SaveSettings();
+                SaveWindowSettings();
                 this.Hide();
                 _notifyIcon!.Visible = true;
                 return;
@@ -144,8 +147,15 @@ namespace TorusGateway
 
         private async void ExitApplication()
         {
+            var result = MessageBox.Show(
+                "Are you sure you want to exit TORUS Gateway?",
+                "Exit Confirmation",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (result != MessageBoxResult.Yes) return;
+
             _isActuallyClosing = true;
-            SaveSettings();
+            SaveWindowSettings();
             _logTimer.Stop();
             RequestLoggingMiddleware.RequestLogged -= OnRequestLogged;
             _notifyIcon?.Dispose();
@@ -165,7 +175,7 @@ namespace TorusGateway
 
         private async void RestartApplication(bool autoConnect = false)
         {
-            SaveSettings();
+            SaveWindowSettings();
             // 웹서버가 켜져 있으면 먼저 종료 (포트 충돌 방지)
             try
             {
@@ -183,10 +193,77 @@ namespace TorusGateway
             Environment.Exit(0);
         }
 
+        // 라디오 버튼 전환 시 IP 지정 패널의 표시 여부만 갱신
+        private void RadioAccess_Checked(object sender, RoutedEventArgs e)
+        {
+            if (PanelAllowedIPs == null) return; // InitializeComponent 중 이벤트 발생 대비
+            PanelAllowedIPs.Visibility = RadioAccessSpecific.IsChecked == true
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        // config.ini의 AllowedIPs 문자열을 읽어 라디오 상태/리스트로 복원
+        private void LoadAccessMode(string csv)
+        {
+            var entries = (csv ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrEmpty(s))
+                .ToList();
+
+            if (entries.Count == 1 && entries[0] == "*")
+            {
+                RadioAccessAll.IsChecked = true;
+            }
+            else if (entries.Count > 0 && entries.All(e => e == "127.0.0.1" || e == "::1"))
+            {
+                RadioAccessLocal.IsChecked = true;
+            }
+            else
+            {
+                RadioAccessSpecific.IsChecked = true;
+                ListBoxAllowedIPs.Items.Clear();
+                foreach (var e in entries) ListBoxAllowedIPs.Items.Add(e);
+            }
+        }
+
+        // 현재 라디오/리스트 상태를 AllowedIPs CSV로 직렬화
+        private string GetAllowedIPsCsv()
+        {
+            if (RadioAccessAll.IsChecked == true) return "*";
+            if (RadioAccessLocal.IsChecked == true) return "127.0.0.1";
+            return string.Join(",", ListBoxAllowedIPs.Items.Cast<string>());
+        }
+
+        // IP 또는 CIDR 형식 유효성 검사
+        private static bool IsValidIpEntry(string entry)
+        {
+            try
+            {
+                if (entry.Contains('/'))
+                    _ = System.Net.IPNetwork.Parse(entry);
+                else
+                    _ = System.Net.IPAddress.Parse(entry);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // 웹서버 실행 중엔 접근 제어 UI를 잠금 (실행 중 변경은 재시작해야 반영되므로)
+        private void SetAccessControlsEnabled(bool enabled)
+        {
+            RadioAccessAll.IsEnabled = enabled;
+            RadioAccessLocal.IsEnabled = enabled;
+            RadioAccessSpecific.IsEnabled = enabled;
+            TextBoxNewIP.IsEnabled = enabled;
+            ButtonAddIP.IsEnabled = enabled;
+            ButtonRemoveIP.IsEnabled = enabled;
+        }
+
         private void LoadSettings()
         {
             TextBoxWebServerHost.Text = ReadConfig(ConfigFile, ConfigSection, "Host", "0.0.0.0");
             TextBoxWebServerPort.Text = ReadConfig(ConfigFile, ConfigSection, "Port", "5001");
+            LoadAccessMode(ReadConfig(ConfigFile, ConfigSection, "AllowedIPs", "*"));
 
             if (double.TryParse(ReadConfig(ConfigFile, ConfigSection, "Width", ""), out double w) && w >= 200)
                 this.Width = w;
@@ -194,16 +271,22 @@ namespace TorusGateway
                 this.Height = h;
         }
 
-        private void SaveSettings()
+        // 창 크기만 저장 (창 닫기/종료/재시작/트레이 시)
+        private void SaveWindowSettings()
         {
-            WriteConfig(ConfigFile, ConfigSection, "Host", TextBoxWebServerHost.Text);
-            WriteConfig(ConfigFile, ConfigSection, "Port", TextBoxWebServerPort.Text);
-
             if (this.WindowState == WindowState.Normal)
             {
                 WriteConfig(ConfigFile, ConfigSection, "Width", this.Width.ToString("F0"));
                 WriteConfig(ConfigFile, ConfigSection, "Height", this.Height.ToString("F0"));
             }
+        }
+
+        // 서버 관련 설정 저장 (WebServer Open 성공 시에만)
+        private void SaveServerSettings()
+        {
+            WriteConfig(ConfigFile, ConfigSection, "Host", TextBoxWebServerHost.Text);
+            WriteConfig(ConfigFile, ConfigSection, "Port", TextBoxWebServerPort.Text);
+            WriteConfig(ConfigFile, ConfigSection, "AllowedIPs", GetAllowedIPsCsv());
         }
 
         //TORUS에 연결하기 전에 App 등록정보를 TORUS 운용 클래스에 입력합니다.
@@ -219,11 +302,11 @@ namespace TorusGateway
         }
 
         //웹서버를 구동합니다. 외부에서 이 웹 서버에 연결합니다. host와 port정보를 필요로 합니다.
-        public void WebServerOpen(string host, int port)
+        public void WebServerOpen(string host, int port, string allowedIpsCsv)
         {
             if (_webServer == null)
             {
-                _webServer = new WebServer.WebServer(host, port);
+                _webServer = new WebServer.WebServer(host, port, allowedIpsCsv);
                 _webServer.Start();
             }
         }
@@ -240,6 +323,7 @@ namespace TorusGateway
                 ButtonWebServerClose.IsEnabled = false;
                 TextBoxWebServerHost.IsReadOnly = false;
                 TextBoxWebServerPort.IsReadOnly = false;
+                SetAccessControlsEnabled(true);
             }
         }
 
@@ -288,17 +372,19 @@ namespace TorusGateway
                 }
                 try
                 {
-                    WebServerOpen(host, port);
+                    WebServerOpen(host, port, GetAllowedIPsCsv());
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show($"Server start failed: {ex.Message}", "Error");
                     return;
                 }
+                SaveServerSettings(); // 개통 성공 시에만 config.ini에 영구 저장
                 ButtonWebServerOpen.IsEnabled = false;
                 ButtonWebServerClose.IsEnabled = true;
                 TextBoxWebServerHost.IsReadOnly = true;
                 TextBoxWebServerPort.IsReadOnly = true;
+                SetAccessControlsEnabled(false);
             }
             else if (sender == ButtonWebServerClose)//게이트웨이 서버 종료
             {
@@ -320,9 +406,27 @@ namespace TorusGateway
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
+            else if (sender == ButtonAddIP)//허용 IP 추가
+            {
+                var entry = TextBoxNewIP.Text.Trim();
+                if (string.IsNullOrEmpty(entry)) return;
+                if (!IsValidIpEntry(entry))
+                {
+                    MessageBox.Show("Invalid IP or CIDR format.\nExample: 192.168.1.10 or 192.168.1.0/24", "Error");
+                    return;
+                }
+                if (!ListBoxAllowedIPs.Items.Contains(entry))
+                    ListBoxAllowedIPs.Items.Add(entry);
+                TextBoxNewIP.Clear();
+            }
+            else if (sender == ButtonRemoveIP)//허용 IP 제거
+            {
+                if (ListBoxAllowedIPs.SelectedItem is string s)
+                    ListBoxAllowedIPs.Items.Remove(s);
+            }
             else if (sender == ButtonMinimizeToTray)//트레이로 보내기
             {
-                SaveSettings();
+                SaveWindowSettings();
                 this.Hide();
                 _notifyIcon!.Visible = true;
             }

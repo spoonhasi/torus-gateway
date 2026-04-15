@@ -5,7 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:TorusGateway.Torus"
              mc:Ignorable="d"
-             d:DesignHeight="500" d:DesignWidth="1050">
+             d:DesignHeight="500" d:DesignWidth="1100">
     <UserControl.Resources>
         <!-- Row 2 입력 영역의 ComboBox/TextBox 높이 통일 -->
         <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
@@ -28,72 +28,85 @@
 
         <!-- Row 0: 설명 -->
         <StackPanel Grid.Row="0" Margin="0,0,0,10">
-            <TextBlock Text="Torus의 설정(MachineList.xml 등)을 바꿀 수 있는 메뉴입니다. Torus는 플랫폼이므로 특정 앱이 Torus의 설정을 바꾸면 다른 앱에 예기치 못한 오류를 발생시킬수 있습니다." TextWrapping="Wrap"/>
-            <TextBlock Text="따라서 Torus의 설정 변경은 오로지 Torus에서 해야 합니다. 본 앱은 Torus 테스트용 앱이므로, 테스트 편의성을 제공하기 위해 Torus의 일부 설정을 바꾸는 기능을 제공합니다." TextWrapping="Wrap"/>
+            <TextBlock Text="This menu allows editing of Torus settings (such as MachineList.xml). Because Torus is a shared platform, changing its settings from an external app may cause unexpected errors in other apps using Torus." TextWrapping="Wrap"/>
+            <TextBlock Text="As a rule, Torus settings should be modified from Torus itself. This is a test utility and exposes a limited subset of Torus settings for testing convenience only." TextWrapping="Wrap"/>
         </StackPanel>
 
-        <!-- Row 1: 경로 설정 -->
-        <Grid Grid.Row="1" Margin="0,0,0,10">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+        <!-- Row 1: 경로 설정 (Border로 시각적 그룹화) -->
+        <Border Grid.Row="1" Margin="0,0,0,10"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                Padding="8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-            <!-- 경로 행들 (단일 Grid로 컬럼 정렬) -->
-            <Grid Grid.Column="0">
+                <!-- 경로 행들 (단일 Grid로 컬럼 정렬) -->
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Torus Run Path:" VerticalAlignment="Center" Margin="0,3"/>
+                    <Button    Grid.Row="0" Grid.Column="1" x:Name="ButtonTorusRunPath" Content="Browse" Width="90" Margin="5,3" Click="Button_Click"/>
+                    <Button    Grid.Row="0" Grid.Column="2" x:Name="ButtonTorusRunExecute" Content="Run Torus" Width="90" Margin="5,3" Click="Button_Click"/>
+                    <TextBox   Grid.Row="0" Grid.Column="3" x:Name="TextBoxTorusRunPath" Margin="5,3,0,3"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Torus Exit Path:" VerticalAlignment="Center" Margin="0,3"/>
+                    <Button    Grid.Row="1" Grid.Column="1" x:Name="ButtonTorusExitPath" Content="Browse" Width="90" Margin="5,3" Click="Button_Click"/>
+                    <Button    Grid.Row="1" Grid.Column="2" x:Name="ButtonTorusExitExecute" Content="Exit Torus" Width="90" Margin="5,3" Click="Button_Click"/>
+                    <TextBox   Grid.Row="1" Grid.Column="3" x:Name="TextBoxTorusExitPath" Margin="5,3,0,3"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="MachineList.xml Path:" VerticalAlignment="Center" Margin="0,3"/>
+                    <Button    Grid.Row="2" Grid.Column="1" x:Name="ButtonTorusMachineListPath" Content="Browse" Width="90" Margin="5,3" Click="Button_Click"/>
+                    <TextBox   Grid.Row="2" Grid.Column="3" x:Name="TextBoxTorusMachineListPath" Margin="5,3,0,3"/>
+                </Grid>
+
+                <!-- 경로 저장/로드 버튼 -->
+                <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                    <Button x:Name="ButtonTorusPathSave" Content="Save Paths" Width="90" Click="Button_Click" Margin="0,3"/>
+                    <Button x:Name="ButtonTorusPathLoad" Content="Load Paths" Width="90" Click="Button_Click" Margin="0,3"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Row 2: MachineList 편집 영역 (파일 액션 툴바 + 속성 편집) -->
+        <Border Grid.Row="2" Margin="0,0,0,10"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                Padding="8">
+            <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Torus 실행 파일 경로:" VerticalAlignment="Center" Margin="0,3"/>
-                <Button    Grid.Row="0" Grid.Column="1" x:Name="ButtonTorusRunPath" Content="경로 지정" Width="90" Margin="5,3" Click="Button_Click"/>
-                <Button    Grid.Row="0" Grid.Column="2" x:Name="ButtonTorusRunExecute" Content="Torus 실행" Width="90" Margin="5,3" Click="Button_Click"/>
-                <TextBox   Grid.Row="0" Grid.Column="3" x:Name="TextBoxTorusRunPath" Margin="5,3,0,3"/>
+                <!-- 파일 액션 툴바 -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                    <Button x:Name="ButtonTorusMachineListRead" Content="Read MachineList.xml" Width="160" Margin="0,0,5,0" Click="Button_Click"/>
+                    <Button x:Name="ButtonTorusMachineListWrite" Content="Write MachineList.xml" Width="160" Margin="0,0,5,0" Click="Button_Click"/>
+                    <Button x:Name="ButtonTorusMachineListArrange" Content="Sort by ID" Width="100" Margin="0,0,15,0" Click="Button_Click"/>
+                    <TextBlock x:Name="TextBlockSaveStatus" Text="Unsaved changes" Foreground="Red" VerticalAlignment="Center"/>
+                </StackPanel>
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Torus 종료 파일 경로:" VerticalAlignment="Center" Margin="0,3"/>
-                <Button    Grid.Row="1" Grid.Column="1" x:Name="ButtonTorusExitPath" Content="경로 지정" Width="90" Margin="5,3" Click="Button_Click"/>
-                <Button    Grid.Row="1" Grid.Column="2" x:Name="ButtonTorusExitExecute" Content="Torus 종료" Width="90" Margin="5,3" Click="Button_Click"/>
-                <TextBox   Grid.Row="1" Grid.Column="3" x:Name="TextBoxTorusExitPath" Margin="5,3,0,3"/>
+                <!-- 속성 편집 영역 -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Torus MachineList.xml 파일 경로:" VerticalAlignment="Center" Margin="0,3"/>
-                <Button    Grid.Row="2" Grid.Column="1" x:Name="ButtonTorusMachineListPath" Content="경로 지정" Width="90" Margin="5,3" Click="Button_Click"/>
-                <TextBox   Grid.Row="2" Grid.Column="3" x:Name="TextBoxTorusMachineListPath" Margin="5,3,0,3"/>
-            </Grid>
-
-            <!-- 경로 저장/로드 버튼 -->
-            <StackPanel Grid.Column="1" Margin="5,0,0,0">
-                <Button x:Name="ButtonTorusPathSave" Content="경로 저장" Width="90" Click="Button_Click" Margin="0,3"/>
-                <Button x:Name="ButtonTorusPathLoad" Content="경로 로드" Width="90" Click="Button_Click" Margin="0,3"/>
-            </StackPanel>
-        </Grid>
-
-        <!-- Row 2: Machine 속성 편집 -->
-        <Grid Grid.Row="2" Margin="0,0,0,10">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- 액션 버튼 -->
-            <StackPanel Grid.Column="0" Margin="0,0,15,0" Width="180">
-                <Button x:Name="ButtonTorusMachineListRead" Content="MachineList.xml 읽기" HorizontalAlignment="Stretch" Margin="0,2" Click="Button_Click"/>
-                <Button x:Name="ButtonTorusMachineListWrite" Content="MachineList.xml 쓰기" HorizontalAlignment="Stretch" Margin="0,2" Click="Button_Click"/>
-                <TextBlock x:Name="TextBlockSaveStatus" Text="변경사항이 저장되지 않았습니다." Foreground="Red" Margin="0,6,0,6"/>
-                <Button x:Name="ButtonTorusMachineListArrange" Content="ID 순으로 정렬" HorizontalAlignment="Stretch" Margin="0,2" Click="Button_Click"/>
-            </StackPanel>
-
-            <!-- 좌측 필드 (activate ~ port) -->
-            <StackPanel Grid.Column="1" Margin="0,0,15,0">
+                    <!-- 좌측 필드 (activate ~ port) -->
+                    <StackPanel Grid.Column="0" Margin="0,0,15,0">
                 <StackPanel Orientation="Horizontal" Margin="0,2">
                     <TextBlock Text="activate :" Width="85" VerticalAlignment="Center"/>
                     <ComboBox x:Name="ComboBoxTorusNcMachineActivate" Width="150" SelectionChanged="ComboBox_SelectionChanged">
@@ -132,7 +145,7 @@
             </StackPanel>
 
             <!-- 우측 필드 (exDllPath ~ password) -->
-            <StackPanel Grid.Column="2" Margin="0,0,15,0">
+            <StackPanel Grid.Column="1" Margin="0,0,15,0">
                 <StackPanel Orientation="Horizontal" Margin="0,2">
                     <TextBlock Text="exDllPath :" Width="105" VerticalAlignment="Center"/>
                     <TextBox x:Name="TextBoxTorusNcMachineExDllPath" Width="270" TextChanged="TextBox_TextChanged"/>
@@ -180,12 +193,14 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- Machine 추가/삭제 버튼 -->
-            <StackPanel Grid.Column="3" VerticalAlignment="Bottom">
-                <Button x:Name="ButtonTorusMachineListItemAdd" Content="신규 Machine 추가" Margin="0,2" Click="Button_Click"/>
-                <Button x:Name="ButtonTorusMachineListItemRemove" Content="선택 Machine 삭제" Margin="0,2" Click="Button_Click"/>
-            </StackPanel>
-        </Grid>
+                    <!-- Machine 추가/삭제 버튼 -->
+                    <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
+                        <Button x:Name="ButtonTorusMachineListItemAdd" Content="Add Machine" Margin="0,2" Click="Button_Click"/>
+                        <Button x:Name="ButtonTorusMachineListItemRemove" Content="Remove Selected" Margin="0,2" Click="Button_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
 
         <!-- Row 3: Machine 목록 -->
         <ListView Grid.Row="3" x:Name="ListViewMachineList" d:ItemsSource="{d:SampleData ItemCount=2}" SelectionChanged="ListView_SelectionChanged">

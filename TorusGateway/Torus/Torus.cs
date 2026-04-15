@@ -7,6 +7,9 @@ namespace TorusGateway.Torus
     public class Torus
     {
         private static readonly object _lockInit = new();
+        // 네이티브 TORUS API의 스레드 안전성이 보장되지 않으므로 모든 호출을 직렬화한다.
+        // 동시 요청 처리량은 떨어지지만 정확성을 우선함.
+        private static readonly object _apiLock = new();
         private static Torus? _instance;
 
         public string AppName { get; private set; }
@@ -62,40 +65,55 @@ namespace TorusGateway.Torus
 
         public string GetData(string address, string filter)
         {
-            int result = Api.getData(address, filter, out Item item, true);
-            if (item == null)
+            lock (_apiLock)
             {
-                return JsonSerializer.Serialize(new { status = result });
-            }
-            else
-            {
-                return item.ToString();
+                int result = Api.getData(address, filter, out Item item, true);
+                if (item == null)
+                {
+                    return JsonSerializer.Serialize(new { status = result });
+                }
+                else
+                {
+                    return item.ToString();
+                }
             }
         }
 
         public string UpdateData(string address, string filter, string value)
         {
-            Item InItem = Item.Parse(value);
-            int result = Api.updateData(address, filter, InItem, out Item _);
-            return JsonSerializer.Serialize(new { status = result });
+            lock (_apiLock)
+            {
+                Item InItem = Item.Parse(value);
+                int result = Api.updateData(address, filter, InItem, out Item _);
+                return JsonSerializer.Serialize(new { status = result });
+            }
         }
 
         public string UploadFile(string localPath, string ncPath, int machineID)
         {
-            int result = Api.UploadFile(localPath, ncPath, machineID);
-            return JsonSerializer.Serialize(new { status = result });
+            lock (_apiLock)
+            {
+                int result = Api.UploadFile(localPath, ncPath, machineID);
+                return JsonSerializer.Serialize(new { status = result });
+            }
         }
 
         public string DownloadFile(string ncPath, string localPath, int machineID)
         {
-            int result = Api.DownloadFile(ncPath, localPath, machineID);
-            return JsonSerializer.Serialize(new { status = result });
+            lock (_apiLock)
+            {
+                int result = Api.DownloadFile(ncPath, localPath, machineID);
+                return JsonSerializer.Serialize(new { status = result });
+            }
         }
 
         public string DeleteFile(string ncPath, int machineID)
         {
-            int result = Api.CNCFileDelete(ncPath, out Item _, machineID);
-            return JsonSerializer.Serialize(new { status = result });
+            lock (_apiLock)
+            {
+                int result = Api.CNCFileDelete(ncPath, out Item _, machineID);
+                return JsonSerializer.Serialize(new { status = result });
+            }
         }
     }
 }

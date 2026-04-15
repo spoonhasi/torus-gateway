@@ -62,8 +62,8 @@ namespace TorusGateway.WebServer
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "장비 데이터 조회 실패: {Segments}", segments);
-                return ErrorResponse(500, "장비 데이터 조회 중 오류가 발생했습니다");
+                _logger.LogError(ex, "Failed to query machine data: {Segments}", segments);
+                return ErrorResponse(500, "Error occurred while fetching machine data");
             }
         }
 
@@ -89,8 +89,8 @@ namespace TorusGateway.WebServer
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "장비 데이터 수정 실패: {Segments}", segments);
-                return ErrorResponse(500, "장비 데이터 수정 중 오류가 발생했습니다");
+                _logger.LogError(ex, "Failed to update machine data: {Segments}", segments);
+                return ErrorResponse(500, "Error occurred while updating machine data");
             }
         }
     }

@@ -15,6 +15,18 @@ TORUS의 REST API 게이트웨이를 제공하는 데스크톱 소프트웨어�
 
 ## Updates
 ---
+v1.2.2
+- 보안 강화: 클라이언트 IP 허용목록 (Allow All / Local Only / Specify IPs)
+- 보안 강화: CORS AllowAnyOrigin 제거 (브라우저 cross-origin 호출 차단으로 CSRF 방어)
+- 안정성: TORUS 네이티브 API 호출 직렬화 (스레드 안전성 보장)
+- 안정성: 임시 디렉토리 이름에 GUID 부여 (동시 요청 충돌 방지)
+- 안정성: NC 파일 다운로드 스트리밍 응답 (32비트 OOM 위험 제거)
+- 안정성: 앱 시작 시 이전 세션의 잔여 임시 디렉토리 자동 정리
+- UI: WebServer Open/Close 버튼 한 줄 정렬, TORUS Settings 버튼 폭 통일
+- UI: TORUS Settings 창 레이아웃 정리 (경로/편집 영역 Border 분리, 파일 액션 툴바 분리)
+- UI: 종료 확인 모달 추가
+- 전체 사용자 표시 문자열 영문화 (메뉴/메시지/오류 응답)
+
 v1.2.1
 - 서버 alive 체크 엔드포인트 추가 (`GET /` → `{"status":"ok"}`)
 - 앱 아이콘 적용 (작업표시줄/창 제목표시줄/시스템 트레이)

@@ -22,6 +22,25 @@ namespace TorusGateway.WebServer
             _logger = logger;
         }
 
+        // 앱 시작 시 호출. 비정상 종료 등으로 남은 이전 세션의 임시 디렉토리를 정리한다.
+        // OnCompleted 콜백이 실행되지 못한 경우(프로세스 강제 종료, 크래시)에 대비.
+        public static void CleanupOrphanedTempDirs()
+        {
+            foreach (var root in new[] { TempDirDownload, TempDirUpload })
+            {
+                try
+                {
+                    string fullRoot = Path.GetFullPath(root, Directory.GetCurrentDirectory());
+                    if (!Directory.Exists(fullRoot)) continue;
+                    foreach (var sub in Directory.EnumerateDirectories(fullRoot))
+                    {
+                        try { Directory.Delete(sub, true); } catch { /* 사용 중이면 다음 시작 때 다시 시도 */ }
+                    }
+                }
+                catch { /* root 자체 접근 실패 무시 */ }
+            }
+        }
+
         private ContentResult ErrorResponse(int statusCode, string errorMessage)
         {
             var body = JsonSerializer.Serialize(new { status = -1, error = errorMessage });
@@ -45,22 +64,25 @@ namespace TorusGateway.WebServer
         public ActionResult<string> GetTorusDownloadFile()
         {
             string? tempDirectory = null;
+            bool streamingOwnsCleanup = false;
             try
             {
                 var (machineID, ncPath) = ExtractMachineAndPath();
 
                 // Path Traversal 방지
                 if (ncPath.Contains("..") || Path.IsPathRooted(ncPath))
-                    return ErrorResponse(400, "유효하지 않은 NC 경로입니다");
+                    return ErrorResponse(400, "Invalid NC path");
 
                 // 입력값 검증
                 if (machineID < 1)
-                    return ErrorResponse(400, "machine 파라미터가 유효하지 않습니다");
+                    return ErrorResponse(400, "Invalid 'machine' parameter");
                 if (string.IsNullOrWhiteSpace(ncPath))
-                    return ErrorResponse(400, "ncpath 파라미터가 비어있습니다");
+                    return ErrorResponse(400, "'ncpath' parameter is empty");
 
-                string currentDatetime = DateTime.Now.ToString("yyyyMMddHHmmssfff");
-                string absolutePath = Path.GetFullPath(TempDirDownload + "/" + currentDatetime, Directory.GetCurrentDirectory());
+                // 타임스탬프(가독성) + 짧은 GUID(유일성). 동시 요청이 같은 ms에 들어와도 디렉토리 충돌 없음.
+                string uniqueName = DateTime.Now.ToString("yyyyMMddHHmmssfff")
+                                  + "_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+                string absolutePath = Path.GetFullPath(TempDirDownload + "/" + uniqueName, Directory.GetCurrentDirectory());
                 tempDirectory = absolutePath;
                 Directory.CreateDirectory(absolutePath);
                 string downloadFileResult = Torus.Torus.Instance.DownloadFile(ncPath, absolutePath + "/", machineID);
@@ -69,30 +91,38 @@ namespace TorusGateway.WebServer
                 using var downloadDoc = JsonDocument.Parse(downloadFileResult);
                 int downloadStatus = downloadDoc.RootElement.GetProperty("status").GetInt32();
                 if (downloadStatus != 0)
-                    return ErrorResponse(502, "NC 장비에서 파일 다운로드에 실패했습니다");
+                    return ErrorResponse(502, "Failed to download file from NC machine");
 
                 string fileName = Path.GetFileName(ncPath);
                 string filePath = absolutePath + "/" + fileName;
 
                 if (!System.IO.File.Exists(filePath))
                 {
-                    return ErrorResponse(404, "파일을 찾을 수 없습니다");
+                    return ErrorResponse(404, "File not found");
                 }
 
-                // 파일 읽기
-                var fileBytes = System.IO.File.ReadAllBytes(filePath);
-
-                // 파일을 다운로드로 전송
-                return File(fileBytes, "application/octet-stream", fileName);
+                // 스트리밍 응답: 32비트 프로세스에서 큰 NC 파일 전체를 메모리에 적재하지 않도록 FileStream 사용.
+                // ASP.NET이 응답 완료 시 스트림을 자동으로 Dispose함.
+                var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                string capturedDir = tempDirectory;
+                HttpContext.Response.OnCompleted(() =>
+                {
+                    try { Directory.Delete(capturedDir, true); } catch { }
+                    return Task.CompletedTask;
+                });
+                streamingOwnsCleanup = true;
+                return File(fileStream, "application/octet-stream", fileName);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "NC 파일 다운로드 실패");
-                return ErrorResponse(500, "NC 파일 다운로드 중 오류가 발생했습니다");
+                _logger.LogError(ex, "NC file download failed");
+                return ErrorResponse(500, "Error occurred during NC file download");
             }
             finally
             {
-                if (tempDirectory != null) try { Directory.Delete(tempDirectory, true); } catch { }
+                // 스트리밍 성공 경로는 OnCompleted가 정리. 그 외(에러/조기 return) 경로만 finally에서 정리.
+                if (!streamingOwnsCleanup && tempDirectory != null)
+                    try { Directory.Delete(tempDirectory, true); } catch { }
             }
         }
 
@@ -107,27 +137,29 @@ namespace TorusGateway.WebServer
 
                 // Path Traversal 방지
                 if (ncPath.Contains("..") || Path.IsPathRooted(ncPath))
-                    return ErrorResponse(400, "유효하지 않은 NC 경로입니다");
+                    return ErrorResponse(400, "Invalid NC path");
 
                 // 입력값 검증
                 if (machineID < 1)
-                    return ErrorResponse(400, "machine 파라미터가 유효하지 않습니다");
+                    return ErrorResponse(400, "Invalid 'machine' parameter");
                 if (string.IsNullOrWhiteSpace(ncPath))
-                    return ErrorResponse(400, "ncpath 파라미터가 비어있습니다");
+                    return ErrorResponse(400, "'ncpath' parameter is empty");
 
                 if (file == null || file.Length == 0)
                 {
-                    return ErrorResponse(400, "파일이 제공되지 않았거나 비어있습니다");
+                    return ErrorResponse(400, "No file provided or file is empty");
                 }
 
                 // 파일 크기 제한 (100MB)
                 const long maxFileSize = 100 * 1024 * 1024;
                 if (file.Length > maxFileSize)
-                    return ErrorResponse(400, $"파일 크기가 제한을 초과합니다 (최대: {maxFileSize / 1024 / 1024}MB)");
+                    return ErrorResponse(400, $"File size exceeds limit (max: {maxFileSize / 1024 / 1024}MB)");
 
                 string safeFileName = Path.GetFileName(file.FileName);
-                string currentDatetime = DateTime.Now.ToString("yyyyMMddHHmmssfff");
-                string filePath = TempDirUpload + "/" + currentDatetime + "/" + safeFileName;
+                // 타임스탬프 + 짧은 GUID로 동시 요청 시 디렉토리 충돌 방지.
+                string uniqueName = DateTime.Now.ToString("yyyyMMddHHmmssfff")
+                                  + "_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+                string filePath = TempDirUpload + "/" + uniqueName + "/" + safeFileName;
                 try
                 {
                     string? directory = Path.GetDirectoryName(filePath);
@@ -140,8 +172,8 @@ namespace TorusGateway.WebServer
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "임시 파일 저장 실패");
-                    return ErrorResponse(500, "파일 업로드 실패");
+                    _logger.LogWarning(ex, "Temporary file save failed");
+                    return ErrorResponse(500, "File upload failed");
                 }
 
                 string absolutePath = Path.GetFullPath(filePath, Directory.GetCurrentDirectory());
@@ -153,7 +185,7 @@ namespace TorusGateway.WebServer
                 using var uploadDoc = JsonDocument.Parse(uploadFileResult);
                 int uploadStatus = uploadDoc.RootElement.GetProperty("status").GetInt32();
                 if (uploadStatus != 0)
-                    return ErrorResponse(502, "NC 장비로 파일 업로드에 실패했습니다");
+                    return ErrorResponse(502, "Failed to upload file to NC machine");
 
                 return new ContentResult
                 {
@@ -164,8 +196,8 @@ namespace TorusGateway.WebServer
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "NC 파일 업로드 실패");
-                return ErrorResponse(500, "NC 파일 업로드 중 오류가 발생했습니다");
+                _logger.LogError(ex, "NC file upload failed");
+                return ErrorResponse(500, "Error occurred during NC file upload");
             }
             finally
             {
@@ -183,13 +215,13 @@ namespace TorusGateway.WebServer
 
                 // Path Traversal 방지
                 if (ncPath.Contains("..") || Path.IsPathRooted(ncPath))
-                    return ErrorResponse(400, "유효하지 않은 NC 경로입니다");
+                    return ErrorResponse(400, "Invalid NC path");
 
                 // 입력값 검증
                 if (machineID < 1)
-                    return ErrorResponse(400, "machine 파라미터가 유효하지 않습니다");
+                    return ErrorResponse(400, "Invalid 'machine' parameter");
                 if (string.IsNullOrWhiteSpace(ncPath))
-                    return ErrorResponse(400, "ncpath 파라미터가 비어있습니다");
+                    return ErrorResponse(400, "'ncpath' parameter is empty");
 
                 string deleteFileResult = Torus.Torus.Instance.DeleteFile(ncPath, machineID);
 
@@ -197,7 +229,7 @@ namespace TorusGateway.WebServer
                 using var deleteDoc = JsonDocument.Parse(deleteFileResult);
                 int deleteStatus = deleteDoc.RootElement.GetProperty("status").GetInt32();
                 if (deleteStatus != 0)
-                    return ErrorResponse(502, "NC 장비에서 파일 삭제에 실패했습니다");
+                    return ErrorResponse(502, "Failed to delete file from NC machine");
 
                 return new ContentResult
                 {
@@ -208,8 +240,8 @@ namespace TorusGateway.WebServer
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "NC 파일 삭제 실패");
-                return ErrorResponse(500, "NC 파일 삭제 중 오류가 발생했습니다");
+                _logger.LogError(ex, "NC file delete failed");
+                return ErrorResponse(500, "Error occurred during NC file deletion");
             }
         }
     }

@@ -176,8 +176,8 @@ namespace TorusGateway.Torus
         {
             OpenFileDialog openFileDialog = new()
             {
-                Title = "파일 열기",
-                Filter = "모든 파일 (*.*)|*.*",
+                Title = "Open File",
+                Filter = "All Files (*.*)|*.*",
             };
             if (oldPath != "")
             {
@@ -216,7 +216,7 @@ namespace TorusGateway.Torus
             }
             else
             {
-                MessageBox.Show("실행 파일을 찾을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Executable not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -228,12 +228,12 @@ namespace TorusGateway.Torus
             TextBlockSaveStatus.Visibility = Visibility.Hidden;
             if (!System.IO.File.Exists(filePath))
             {
-                MessageBox.Show("MachineList.xml 파일을 찾을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("MachineList.xml not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
             if (!filePath.EndsWith("MachineList.xml"))
             {
-                MessageBox.Show("파일 이름이 \"MachineList.xml\"이어야 합니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("The file name must be \"MachineList.xml\".", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
             XDocument doc = XDocument.Load(filePath);
@@ -336,12 +336,12 @@ namespace TorusGateway.Torus
         {
             if (!System.IO.File.Exists(filePath))
             {
-                MessageBox.Show("MachineList.xml 파일을 찾을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("MachineList.xml not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
             if (!filePath.EndsWith("MachineList.xml"))
             {
-                MessageBox.Show("파일 이름이 \"MachineList.xml\"이어야 합니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("The file name must be \"MachineList.xml\".", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
             var activeIds = ncMachineList_
@@ -357,7 +357,7 @@ namespace TorusGateway.Torus
 
             if (duplicateId != 0)
             {
-                MessageBox.Show($"Activate가 true인 설비 목록 중에 중복된 id({duplicateId})가 발견되었습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Duplicate id ({duplicateId}) found among activated machines.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -383,7 +383,7 @@ namespace TorusGateway.Torus
             XDocument doc = new(rootElement);
             doc.Save(filePath);
             TextBlockSaveStatus.Visibility = Visibility.Hidden;
-            MessageBox.Show("MachineList.xml 파일을 변경하였습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("MachineList.xml updated.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void AddMachineListItem()

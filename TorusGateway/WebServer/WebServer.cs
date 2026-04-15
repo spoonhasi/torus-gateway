@@ -3,10 +3,84 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 
 namespace TorusGateway.WebServer
 {
+    // 클라이언트 IP 허용 목록. "*"면 전체 허용, 그 외엔 단일 IP(192.168.1.10) 또는 CIDR(192.168.1.0/24) 지원.
+    public class IpAllowlistOptions
+    {
+        public bool AllowAll { get; private set; }
+        private readonly List<IPNetwork> _networks = new();
+
+        public IpAllowlistOptions(string csv)
+        {
+            if (string.IsNullOrWhiteSpace(csv)) return; // 비어있으면 전체 거부
+
+            foreach (var raw in csv.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var entry = raw.Trim();
+                if (entry == "*")
+                {
+                    AllowAll = true;
+                    return;
+                }
+                try
+                {
+                    if (entry.Contains('/'))
+                    {
+                        _networks.Add(IPNetwork.Parse(entry));
+                    }
+                    else
+                    {
+                        var ip = IPAddress.Parse(entry);
+                        int prefix = ip.AddressFamily == AddressFamily.InterNetwork ? 32 : 128;
+                        _networks.Add(new IPNetwork(ip, prefix));
+                    }
+                }
+                catch { /* 잘못된 항목은 무시 */ }
+            }
+        }
+
+        public bool IsAllowed(IPAddress? ip)
+        {
+            if (AllowAll) return true;
+            if (ip == null) return false;
+            if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+            // loopback 정규화: ::1도 127.0.0.1 규칙에 매칭되도록
+            if (IPAddress.IsLoopback(ip)) ip = IPAddress.Loopback;
+            foreach (var net in _networks)
+                if (net.Contains(ip)) return true;
+            return false;
+        }
+    }
+
+    public class IpAllowlistMiddleware
+    {
+        private readonly RequestDelegate _next;
+        private readonly IpAllowlistOptions _options;
+
+        public IpAllowlistMiddleware(RequestDelegate next, IpAllowlistOptions options)
+        {
+            _next = next;
+            _options = options;
+        }
+
+        public async Task InvokeAsync(HttpContext context)
+        {
+            if (!_options.IsAllowed(context.Connection.RemoteIpAddress))
+            {
+                context.Response.StatusCode = 403;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync("{\"status\":-1,\"error\":\"client IP not allowed\"}");
+                return;
+            }
+            await _next(context);
+        }
+    }
+
     public class RequestLoggingMiddleware
     {
         private readonly RequestDelegate _next;
@@ -52,11 +126,16 @@ namespace TorusGateway.WebServer
         private readonly IHost _webHost;//웹서버의 호스팅 환경 관리 변수
         private bool _disposed;
 
-        public WebServer(string host, int port)
+        public WebServer(string host, int port, string allowedIpsCsv)
         {
+            var allowlist = new IpAllowlistOptions(allowedIpsCsv);
             var hostBuilder = Host.CreateDefaultBuilder();
             hostBuilder.ConfigureWebHostDefaults(webBuilder =>
             {
+                webBuilder.ConfigureServices(services =>
+                {
+                    services.AddSingleton(allowlist); // IpAllowlistMiddleware가 DI로 주입받음
+                });
                 webBuilder.UseStartup<Startup>();//Startup 클래스를 앱의 시작 클래스(Entry Point)로 지정
                 webBuilder.UseUrls("http://" + host + ":" + port.ToString());//서버가 리스닝할 URL과 포트 설정(http://localhost:5000)
             });
@@ -67,7 +146,7 @@ namespace TorusGateway.WebServer
         {
             _ = _webHost.RunAsync().ContinueWith(t =>  // 웹 서버를 비동기적으로 실행합니다.
             {
-                System.Diagnostics.Debug.WriteLine($"웹 서버 시작 실패: {t.Exception?.InnerException?.Message}");
+                System.Diagnostics.Debug.WriteLine($"Web server start failed: {t.Exception?.InnerException?.Message}");
             }, TaskContinuationOptions.OnlyOnFaulted);
         }
 
@@ -90,17 +169,9 @@ namespace TorusGateway.WebServer
     {
         public static void ConfigureServices(IServiceCollection services)//앱에 필요한 서비스들을 등록
         {
-            services.AddCors(options =>
-            {
-                options.AddPolicy("AllowAllOrigins", builder =>
-                {
-                    builder
-                        .AllowAnyOrigin()    // 모든 출처 허용
-                        .AllowAnyMethod()    // 모든 HTTP 메서드 허용
-                        .AllowAnyHeader();   // 모든 헤더 허용
-                });
-            });
-
+            // CORS 미설정: Access-Control-Allow-Origin 헤더를 보내지 않음.
+            // 브라우저가 cross-origin JS 호출을 자체 차단하므로 악성 웹페이지를 통한 CSRF를 방어함.
+            // 서버사이드 호출(Next.js SSR, curl, HttpClient 등)은 CORS와 무관하므로 정상 동작.
             services.AddControllers(); //여기에서 Controller를 찾습니다.
         }
 
@@ -112,10 +183,8 @@ namespace TorusGateway.WebServer
             }
 
             app.UseMiddleware<RequestLoggingMiddleware>();
+            app.UseMiddleware<IpAllowlistMiddleware>(); // 로깅 뒤에 두어 차단된 요청도 403으로 로그에 남게 함
             app.UseRouting();
-
-            // CORS 미들웨어 사용
-            app.UseCors("AllowAllOrigins");
 
             app.UseEndpoints(endpoints =>
             {
