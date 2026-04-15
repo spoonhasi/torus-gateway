@@ -32,6 +32,18 @@ namespace TorusGateway.WebServer
             return (address, filter);
         }
 
+        // GET / - 단순 alive 체크
+        [HttpGet("/")]
+        public ContentResult GetAlive()
+        {
+            return new ContentResult
+            {
+                Content = "{\"status\":\"ok\"}",
+                ContentType = "application/json",
+                StatusCode = 200
+            };
+        }
+
         // GET machine/{*segments}
         [HttpGet("{*segments}")]
         public ActionResult<string> GetTorusGetData(string segments)

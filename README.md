@@ -15,6 +15,10 @@ TORUS의 REST API 게이트웨이를 제공하는 데스크톱 소프트웨어�
 
 ## Updates
 ---
+v1.2.1
+- 서버 alive 체크 엔드포인트 추가 (`GET /` → `{"status":"ok"}`)
+- 앱 아이콘 적용 (작업표시줄/창 제목표시줄/시스템 트레이)
+
 v1.2
 - TORUS 연결 실패 시 Reconnect 버튼으로 앱 자동 재시작하여 재연결
 - 앱 종료 시 Environment.Exit(0)으로 네이티브 DLL 리소스 확실한 해제
