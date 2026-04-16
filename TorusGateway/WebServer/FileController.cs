@@ -70,7 +70,7 @@ namespace TorusGateway.WebServer
                 var (machineID, ncPath) = ExtractMachineAndPath();
 
                 // Path Traversal 방지
-                if (ncPath.Contains("..") || Path.IsPathRooted(ncPath))
+                if (ncPath.Contains(".."))
                     return ErrorResponse(400, "Invalid NC path");
 
                 // 입력값 검증
@@ -136,7 +136,7 @@ namespace TorusGateway.WebServer
                 var (machineID, ncPath) = ExtractMachineAndPath();
 
                 // Path Traversal 방지
-                if (ncPath.Contains("..") || Path.IsPathRooted(ncPath))
+                if (ncPath.Contains(".."))
                     return ErrorResponse(400, "Invalid NC path");
 
                 // 입력값 검증
@@ -214,7 +214,7 @@ namespace TorusGateway.WebServer
                 var (machineID, ncPath) = ExtractMachineAndPath();
 
                 // Path Traversal 방지
-                if (ncPath.Contains("..") || Path.IsPathRooted(ncPath))
+                if (ncPath.Contains(".."))
                     return ErrorResponse(400, "Invalid NC path");
 
                 // 입력값 검증

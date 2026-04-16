@@ -15,6 +15,11 @@ TORUS의 REST API 게이트웨이를 제공하는 데스크톱 소프트웨어�
 
 ## Updates
 ---
+v1.2.4
+- NC 파일 내용을 JSON value로 읽기/쓰기/삭제하는 엔드포인트 추가 (`GET/PUT/DELETE /machine/ncMemoryPath/content`)
+- NC 경로의 `Path.IsPathRooted` 체크 제거 (`//NC/MDI/2000` 같은 절대 NC 경로 허용)
+- JSON 직렬화 시 `+` 등의 불필요한 유니코드 이스케이프 제거 (`\u002B` → `+`)
+
 v1.2.3
 - PUT 요청 body의 "value" 키가 단일 값이면 자동으로 배열로 감싸서 TORUS에 전달 (`{"value": 42}` → `{"value": [42]}`)
 
