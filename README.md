@@ -15,6 +15,9 @@ TORUS의 REST API 게이트웨이를 제공하는 데스크톱 소프트웨어�
 
 ## Updates
 ---
+v1.2.3
+- PUT 요청 body의 "value" 키가 단일 값이면 자동으로 배열로 감싸서 TORUS에 전달 (`{"value": 42}` → `{"value": [42]}`)
+
 v1.2.2
 - 보안 강화: 클라이언트 IP 허용목록 (Allow All / Local Only / Specify IPs)
 - 보안 강화: CORS AllowAnyOrigin 제거 (브라우저 cross-origin 호출 차단으로 CSRF 방어)
