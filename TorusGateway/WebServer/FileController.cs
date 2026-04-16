@@ -93,7 +93,7 @@ namespace TorusGateway.WebServer
                 if (downloadStatus != 0)
                     return ErrorResponse(502, "Failed to download file from NC machine");
 
-                string fileName = Path.GetFileName(ncPath);
+                string fileName = ncPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries).Last();
                 string filePath = absolutePath + "/" + fileName;
 
                 if (!System.IO.File.Exists(filePath))

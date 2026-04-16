@@ -104,8 +104,9 @@ namespace TorusGateway.WebServer
             return Encoding.UTF8.GetString(ms.ToArray());
         }
 
-        // PUT machine/{*segments}
+        // PUT/POST machine/{*segments}
         [HttpPut("{*segments}")]
+        [HttpPost("{*segments}")]
         public async Task<ActionResult<string>> PutTorusUpdateData(string segments)
         {
             try
@@ -179,7 +180,7 @@ namespace TorusGateway.WebServer
                 if (downloadDoc.RootElement.GetProperty("status").GetInt32() != 0)
                     return ErrorResponse(502, "Failed to download file from NC machine");
 
-                string fileName = Path.GetFileName(ncPath);
+                string fileName = ncPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries).Last();
                 string filePath = absolutePath + "/" + fileName;
                 if (!System.IO.File.Exists(filePath))
                     return ErrorResponse(404, "File not found");
@@ -203,9 +204,10 @@ namespace TorusGateway.WebServer
             }
         }
 
-        // PUT /machine/ncMemoryPath/content?machine=1&ncMemoryPath=program/O0001.nc
+        // PUT|POST /machine/ncMemoryPath/content?machine=1&ncMemoryPath=program/O0001.nc
         // body의 "value"를 NC 파일 내용으로 작성하여 업로드
         [HttpPut("ncMemoryPath/content")]
+        [HttpPost("ncMemoryPath/content")]
         public async Task<ActionResult<string>> PutNcFileContent()
         {
             string? tempDirectory = null;
@@ -229,6 +231,13 @@ namespace TorusGateway.WebServer
                 else
                     fileContent = valueProp.GetString() ?? "";
 
+                // 리터럴 이스케이프 시퀀스(\n, \r, \t)를 실제 문자로 치환.
+                // 클라이언트가 JSON 직렬화 시 이중 이스케이프(\\n → 리터럴 \n)할 수 있으므로 보정.
+                fileContent = fileContent.Replace("\\r\\n", "\r\n")
+                                         .Replace("\\n", "\n")
+                                         .Replace("\\r", "\r")
+                                         .Replace("\\t", "\t");
+
                 // 임시 파일에 저장 후 TORUS로 업로드
                 string uniqueName = DateTime.Now.ToString("yyyyMMddHHmmssfff")
                                   + "_" + Guid.NewGuid().ToString("N").Substring(0, 8);
@@ -236,7 +245,7 @@ namespace TorusGateway.WebServer
                 tempDirectory = tempDir;
                 Directory.CreateDirectory(tempDir);
 
-                string fileName = Path.GetFileName(ncPath);
+                string fileName = ncPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries).Last();
                 string filePath = tempDir + "/" + fileName;
                 await System.IO.File.WriteAllTextAsync(filePath, fileContent);
 
@@ -258,10 +267,11 @@ namespace TorusGateway.WebServer
             }
         }
 
-        // DELETE /machine/ncMemoryPath/content?machine=1&ncMemoryPath=program/O0001.nc
-        // NC 파일 삭제
-        [HttpDelete("ncMemoryPath/content")]
-        public ActionResult<string> DeleteNcFile()
+        // PUT|POST /machine/ncMemoryPath/exist?machine=1&ncMemoryPath=program/O0001.nc
+        // {"value": false} → NC 파일 삭제
+        [HttpPut("ncMemoryPath/exist")]
+        [HttpPost("ncMemoryPath/exist")]
+        public async Task<ActionResult<string>> PutNcFileExist()
         {
             try
             {
@@ -269,9 +279,26 @@ namespace TorusGateway.WebServer
                 var validationError = ValidateNcMemoryPathParams(machineID, ncPath);
                 if (validationError != null) return validationError;
 
+                using var reader = new StreamReader(Request.Body);
+                string body = await reader.ReadToEndAsync();
+
+                using var doc = JsonDocument.Parse(body);
+                if (!doc.RootElement.TryGetProperty("value", out var valueProp))
+                    return ErrorResponse(400, "'value' field is required");
+
+                // value가 배열이면 첫 번째 요소, 아니면 직접 판별
+                bool value;
+                if (valueProp.ValueKind == JsonValueKind.Array)
+                    value = valueProp[0].GetBoolean();
+                else
+                    value = valueProp.GetBoolean();
+
+                if (value)
+                    return ErrorResponse(400, "Only {\"value\": false} is supported (file deletion)");
+
                 string deleteResult = Torus.Torus.Instance.DeleteFile(ncPath, machineID);
-                using var doc = JsonDocument.Parse(deleteResult);
-                if (doc.RootElement.GetProperty("status").GetInt32() != 0)
+                using var resultDoc = JsonDocument.Parse(deleteResult);
+                if (resultDoc.RootElement.GetProperty("status").GetInt32() != 0)
                     return ErrorResponse(502, "Failed to delete file from NC machine");
 
                 return new ContentResult { Content = deleteResult, ContentType = "application/json", StatusCode = 200 };
