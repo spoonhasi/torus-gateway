@@ -115,5 +115,14 @@ namespace TorusGateway.Torus
                 return JsonSerializer.Serialize(new { status = result });
             }
         }
+
+        public string ExecuteCNCFile(int channel, string ncPath, int machineID)
+        {
+            lock (_apiLock)
+            {
+                int result = Api.CNCFileExecute(channel, ncPath, out Item _, machineID);
+                return JsonSerializer.Serialize(new { status = result });
+            }
+        }
     }
 }

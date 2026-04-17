@@ -41,7 +41,7 @@ namespace TorusGateway
             ButtonWebServerClose.IsEnabled = false;
 
             // 이전 세션의 비정상 종료로 남은 임시 파일 디렉토리 정리.
-            FileController.CleanupOrphanedTempDirs();
+            CustomController.CleanupOrphanedTempDirs();
 
             LoadSettings();
 

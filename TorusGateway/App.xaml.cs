@@ -42,8 +42,8 @@ namespace TorusGateway
 
         protected override void OnExit(ExitEventArgs e)
         {
-            CleanupTempDirectories(WebServer.FileController.TempDirDownload);
-            CleanupTempDirectories(WebServer.FileController.TempDirUpload);
+            CleanupTempDirectories(WebServer.CustomController.TempDirDownload);
+            CleanupTempDirectories(WebServer.CustomController.TempDirUpload);
             _mutex?.ReleaseMutex();
             _mutex?.Dispose();
             base.OnExit(e);
