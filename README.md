@@ -9,12 +9,21 @@ TORUS의 REST API 게이트웨이를 제공하는 데스크톱 소프트웨어�
 - TORUS의 장비 연결 설정을 손쉽게 할수있도록 machineList.xml 편집 기능이 있습니다. (Torus/MachineListControl.xaml)
 - TORUS의 장비 연결 설정 기능은 TorusTester를 참고하여 구현되었습니다.
 - 웹 프레임워크의 기반은 ASP.net입니다. WebServer/WebServer.cs에 관련 소스가 있습니다.
-- WebServer/MachineController.cs의 GetTorusGetData 함수는 Get을 TORUS의 api.getData 함수로 변환하여 획득한 결과를 그대로 반환합니다.
-- WebServer/MachineController.cs의 PutTorusUpdateData 함수는 Put을 TORUS의 api.updateData 함수로 변환하여 획득한 결과를 그대로 반환합니다.
-- WebServer/FileController.cs의 함수들은 파일 업로드/다운로드/삭제 함수입니다. TORUS에서 해당 기능은 MachineDataModel에 정의되어 있지 않으므로 별도의 address와 filter를 사용하였습니다.
+- WebServer/TorusController.cs는 TORUS의 api.getData / api.updateData를 그대로 노출하는 pass-through 컨트롤러입니다 (`GET/PUT/POST /machine/{*}`).
+- WebServer/CustomController.cs는 이 앱이 중간에 처리하는 합성 엔드포인트 모음입니다 (파일 업로드/다운로드/삭제, NC 파일 내용 JSON, mainProgramPath 등).
+- WebServer/TorusStatusCodes.cs는 TORUS의 NC_RET 에러 코드를 사람이 읽을 수 있는 설명으로 매핑합니다.
 
 ## Updates
 ---
+v1.3.0
+- 구조: MachineController → TorusController 리네임, FileController는 CustomController로 통합 (URL은 그대로)
+- 응답 필터: GET `/machine/{*}`는 status + value만 남기고, 단일 원소 배열은 해제 (datatype에 "list" 포함 시 예외)
+- 응답 필터: PUT/POST `/machine/{*}`는 status만 남김
+- 에러 매핑: TORUS status != 0이면 `error` 키에 매핑된 설명 자동 삽입 (WebServer/TorusStatusCodes.cs)
+- 커스텀 엔드포인트 실패 응답: 실제 TORUS status 코드와 설명을 포함한 502 반환
+- 신규: `GET/POST /machine/channel/mainProgramPath` (CNCFileExecute 기반)
+- JSON 직렬화에 UnsafeRelaxedJsonEscaping 적용하여 한글/기호 이스케이프 제거
+
 v1.2.5
 - NC 파일 내용을 JSON value로 읽기/쓰기하는 엔드포인트 (`GET/PUT/POST /machine/ncMemoryPath/content`)
 - NC 파일 삭제를 `{"value": false}`로 수행 (`PUT/POST /machine/ncMemoryPath/exist`)

@@ -4,6 +4,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace TorusGateway.WebServer
@@ -14,6 +15,16 @@ namespace TorusGateway.WebServer
     [Route("machine")]
     public class TorusController : ControllerBase
     {
+        // 한글/특수문자가 \uXXXX로 이스케이프되지 않도록 공용 옵션.
+        internal static readonly JsonSerializerOptions JsonSerOptions = new()
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+        internal static readonly JsonWriterOptions JsonWriterOpts = new()
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+
         private readonly ILogger<TorusController> _logger;
 
         public TorusController(ILogger<TorusController> logger)
@@ -23,7 +34,7 @@ namespace TorusGateway.WebServer
 
         private ContentResult ErrorResponse(int statusCode, string errorMessage)
         {
-            var body = JsonSerializer.Serialize(new { status = -1, error = errorMessage });
+            var body = JsonSerializer.Serialize(new { status = -1, error = errorMessage }, JsonSerOptions);
             return new ContentResult { Content = body, ContentType = "application/json", StatusCode = statusCode };
         }
 
@@ -89,7 +100,7 @@ namespace TorusGateway.WebServer
             }
 
             using var ms = new MemoryStream();
-            using var writer = new Utf8JsonWriter(ms);
+            using var writer = new Utf8JsonWriter(ms, JsonWriterOpts);
             writer.WriteStartObject();
             int? errorStatusCode = null;
             if (doc.RootElement.TryGetProperty("status", out var statusProp))
@@ -138,7 +149,7 @@ namespace TorusGateway.WebServer
                 return json;
 
             using var ms = new MemoryStream();
-            using var writer = new Utf8JsonWriter(ms);
+            using var writer = new Utf8JsonWriter(ms, JsonWriterOpts);
             writer.WriteStartObject();
             foreach (var prop in doc.RootElement.EnumerateObject())
             {
@@ -167,7 +178,7 @@ namespace TorusGateway.WebServer
                 return json;
 
             using var ms = new MemoryStream();
-            using var writer = new Utf8JsonWriter(ms);
+            using var writer = new Utf8JsonWriter(ms, JsonWriterOpts);
             writer.WriteStartObject();
             int? errorStatusCode = null;
             if (doc.RootElement.TryGetProperty("status", out var statusProp))

@@ -45,14 +45,16 @@ namespace TorusGateway.WebServer
 
         private ContentResult ErrorResponse(int statusCode, string errorMessage)
         {
-            var body = JsonSerializer.Serialize(new { status = -1, error = errorMessage });
+            var body = JsonSerializer.Serialize(new { status = -1, error = errorMessage }, TorusController.JsonSerOptions);
             return new ContentResult { Content = body, ContentType = "application/json", StatusCode = statusCode };
         }
 
         // TORUS 함수 호출 결과의 status가 0이 아닌 경우. 실제 status 코드와 매핑된 설명을 반환한다.
         private ContentResult TorusErrorResponse(int torusStatus)
         {
-            var body = JsonSerializer.Serialize(new { status = torusStatus, error = TorusStatusCodes.GetDescription(torusStatus) });
+            var body = JsonSerializer.Serialize(
+                new { status = torusStatus, error = TorusStatusCodes.GetDescription(torusStatus) },
+                TorusController.JsonSerOptions);
             return new ContentResult { Content = body, ContentType = "application/json", StatusCode = 502 };
         }
 

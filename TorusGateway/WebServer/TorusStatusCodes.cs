@@ -55,6 +55,7 @@ namespace TorusGateway.WebServer
             { 0x21BE4000, "Reconnect attempted from a thread different from the one that created the connection" },
             { 0x21BE5000, "Not a timeseries instance" },
             { 0x21BF0000, "No symbol data" },
+            { 0x20206028, "MgrCommunication Address 또는 Filter 오류" },
         };
 
         public static string GetDescription(int statusCode)
