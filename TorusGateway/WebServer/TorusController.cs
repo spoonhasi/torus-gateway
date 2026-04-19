@@ -84,7 +84,8 @@ namespace TorusGateway.WebServer
         // TORUS GetData 응답에서 status와 value만 남기고 나머지 키(type, timestamp 등)는 제거.
         // 추가로 value가 길이 1짜리 배열이면 배열을 해제해 단일 값으로 만든다.
         // 단, datatype 키 값에 "list"가 포함되어 있으면 배열을 유지한다 (빈 리스트/단일원소 리스트 구분용).
-        internal static string FilterStatusAndValue(string json)
+        // unwrapSingletonArray=false를 넘기면 datatype 여부와 무관하게 배열을 항상 유지한다.
+        internal static string FilterStatusAndValue(string json, bool unwrapSingletonArray = true)
         {
             using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.ValueKind != JsonValueKind.Object)
@@ -116,7 +117,8 @@ namespace TorusGateway.WebServer
             if (doc.RootElement.TryGetProperty("value", out var valueProp))
             {
                 writer.WritePropertyName("value");
-                if (!isListType
+                if (unwrapSingletonArray
+                    && !isListType
                     && valueProp.ValueKind == JsonValueKind.Array
                     && valueProp.GetArrayLength() == 1)
                 {
@@ -136,7 +138,7 @@ namespace TorusGateway.WebServer
 
         // TORUS Item의 "value" 키는 항상 배열이어야 한다. (예: {"value": [42]})
         // 클라이언트 편의를 위해 단일 값({"value": 42})이 오면 자동으로 배열로 감싼다.
-        private static string WrapValueToArray(string json)
+        internal static string WrapValueToArray(string json)
         {
             using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.ValueKind != JsonValueKind.Object)
@@ -171,7 +173,7 @@ namespace TorusGateway.WebServer
         }
 
         // TORUS UpdateData 응답에서 status만 남긴다. status != 0이면 error 설명도 함께 반환.
-        private static string FilterStatusOnly(string json)
+        internal static string FilterStatusOnly(string json)
         {
             using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.ValueKind != JsonValueKind.Object)
@@ -198,10 +200,9 @@ namespace TorusGateway.WebServer
             return Encoding.UTF8.GetString(ms.ToArray());
         }
 
-        // PUT/POST machine/{*segments}
-        [HttpPut("{*segments}")]
+        // POST machine/{*segments}
         [HttpPost("{*segments}")]
-        public async Task<ActionResult<string>> PutTorusUpdateData(string segments)
+        public async Task<ActionResult<string>> PostTorusUpdateData(string segments)
         {
             try
             {

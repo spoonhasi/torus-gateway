@@ -7,11 +7,17 @@
 		<UseWPF>true</UseWPF>
 		<UseWindowsForms>true</UseWindowsForms>
 		<PlatformTarget>x86</PlatformTarget>
-		<Version>1.3.0</Version>
+		<Version>1.3.1</Version>
 		<ApplicationIcon>torus_gateway.ico</ApplicationIcon>
 	</PropertyGroup>
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+	<ItemGroup>
+		<EmbeddedResource Include="WebServer\CustomEndpoints.md" />
+	</ItemGroup>
+	<ItemGroup>
+		<InternalsVisibleTo Include="TorusGateway.Tests" />
 	</ItemGroup>
 	<ItemGroup>
 	  <Reference Include="IntelligentApiCS">
@@ -21,6 +27,10 @@
 	    <HintPath>..\TorusApi\ItemCS.dll</HintPath>
 	  </Reference>
 	</ItemGroup>
+	<PropertyGroup>
+		<!-- dotnet test 등 솔루션 외부에서 프로젝트를 빌드할 때 SolutionDir이 비어있으므로 폴백. -->
+		<SolutionDir Condition="'$(SolutionDir)' == '' or '$(SolutionDir)' == '*Undefined*'">$(MSBuildThisFileDirectory)..\</SolutionDir>
+	</PropertyGroup>
 	<Target Name="PreBuild" BeforeTargets="PreBuildEvent">
 	  <Exec Command="copy /Y &quot;$(SolutionDir)TorusApi\*.dll&quot; &quot;$(TargetDir)&quot;" />
 	</Target>

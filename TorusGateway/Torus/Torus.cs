@@ -124,5 +124,27 @@ namespace TorusGateway.Torus
                 return JsonSerializer.Serialize(new { status = result });
             }
         }
+
+        public string GetMachinesInfo()
+        {
+            lock (_apiLock)
+            {
+                int result = Api.getMachinesInfo(out Item item);
+                if (item == null)
+                    return JsonSerializer.Serialize(new { status = result });
+
+                // getMachinesInfo 응답은 status 필드를 포함하지 않으므로 루트 객체 맨 앞에 주입한다.
+                string itemJson = item.ToString();
+                int openBrace = itemJson.IndexOf('{');
+                if (openBrace < 0)
+                    return JsonSerializer.Serialize(new { status = result });
+                int afterBrace = openBrace + 1;
+                while (afterBrace < itemJson.Length && char.IsWhiteSpace(itemJson[afterBrace]))
+                    afterBrace++;
+                bool hasContent = afterBrace < itemJson.Length && itemJson[afterBrace] != '}';
+                string injection = hasContent ? $"\"status\":{result}," : $"\"status\":{result}";
+                return itemJson.Insert(openBrace + 1, injection);
+            }
+        }
     }
 }

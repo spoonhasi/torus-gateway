@@ -391,6 +391,11 @@ namespace TorusGateway
                 try { await WebServerCloseAsync(); }
                 catch (Exception ex) { MessageBox.Show($"Server stop failed: {ex.Message}", "Error"); }
             }
+            else if (sender == ButtonDocs)//커스텀 엔드포인트 문서 창 열기
+            {
+                var docsWindow = new DocsWindow { Owner = this };
+                docsWindow.Show();
+            }
             else if (sender == ButtonTorusSetting)//TORUS 설정 모달 창 열기
             {
                 var settingWindow = new Torus.MachineListWindow();

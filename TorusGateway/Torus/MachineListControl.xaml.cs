@@ -67,6 +67,12 @@ namespace TorusGateway.Torus
             TextBlockSaveStatus.Visibility = Visibility.Hidden;
             ListViewMachineList.ItemsSource = ncMachineList_;
             LoadPath();
+            // MachineList.xml 경로가 실제 파일을 가리키면 자동으로 Read.
+            if (!string.IsNullOrWhiteSpace(TextBoxTorusMachineListPath.Text)
+                && System.IO.File.Exists(TextBoxTorusMachineListPath.Text))
+            {
+                MachineListXmlRead(TextBoxTorusMachineListPath.Text);
+            }
         }
 
         private static void SelectComboBoxItem(ComboBox comboBox, string targetValue)
@@ -139,6 +145,14 @@ namespace TorusGateway.Torus
                 else if (sender == ButtonTorusMachineListArrange)
                 {
                     ArrangeMachineListItem();
+                }
+                else if (sender == ButtonTorusMachineListMoveUp)
+                {
+                    MoveSelectedMachine(-1);
+                }
+                else if (sender == ButtonTorusMachineListMoveDown)
+                {
+                    MoveSelectedMachine(+1);
                 }
             }
         }
@@ -391,7 +405,7 @@ namespace TorusGateway.Torus
             NCmachine machine = new();
             machine.name = "Machine";
             machine.id = 1;
-            machine.vendorCode = "Kcnc";
+            machine.vendorCode = "KCNC";
             machine.connectCode = "Default";
             machine.ncVersionCode = "Default";
             machine.toolSystem = "Default";
@@ -424,6 +438,19 @@ namespace TorusGateway.Torus
             ncMachineList_ = sortedList;
             ListViewMachineList.ItemsSource = ncMachineList_;
             ListViewMachineList.Items.Refresh();
+            TextBlockSaveStatus.Visibility = Visibility.Visible;
+        }
+
+        // delta: -1 = up, +1 = down
+        private void MoveSelectedMachine(int delta)
+        {
+            if (ListViewMachineList.SelectedItem is not NCmachine ncMachine) return;
+            int oldIndex = ncMachineList_.IndexOf(ncMachine);
+            int newIndex = oldIndex + delta;
+            if (oldIndex < 0 || newIndex < 0 || newIndex >= ncMachineList_.Count) return;
+            ncMachineList_.Move(oldIndex, newIndex);
+            ListViewMachineList.SelectedItem = ncMachine;
+            ListViewMachineList.ScrollIntoView(ncMachine);
             TextBlockSaveStatus.Visibility = Visibility.Visible;
         }
 

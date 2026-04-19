@@ -92,14 +92,14 @@
                 <!-- 파일 액션 툴바 -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
                     <Button x:Name="ButtonTorusMachineListRead" Content="Read MachineList.xml" Width="160" Margin="0,0,5,0" Click="Button_Click"/>
-                    <Button x:Name="ButtonTorusMachineListWrite" Content="Write MachineList.xml" Width="160" Margin="0,0,5,0" Click="Button_Click"/>
-                    <Button x:Name="ButtonTorusMachineListArrange" Content="Sort by ID" Width="100" Margin="0,0,15,0" Click="Button_Click"/>
+                    <Button x:Name="ButtonTorusMachineListWrite" Content="Write MachineList.xml" Width="160" Margin="0,0,15,0" Click="Button_Click"/>
                     <TextBlock x:Name="TextBlockSaveStatus" Text="Unsaved changes" Foreground="Red" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- 속성 편집 영역 -->
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
@@ -125,13 +125,13 @@
                 <StackPanel Orientation="Horizontal" Margin="0,2">
                     <TextBlock Text="vendorCode :" Width="85" VerticalAlignment="Center"/>
                     <ComboBox x:Name="ComboBoxTorusNcMachineVendorCode" Width="150" SelectionChanged="ComboBox_SelectionChanged">
-                        <ComboBoxItem Content="Fanuc"/>
-                        <ComboBoxItem Content="Siemens"/>
+                        <ComboBoxItem Content="FANUC"/>
+                        <ComboBoxItem Content="SIEMENS"/>
                         <ComboBoxItem Content="CSCAM"/>
-                        <ComboBoxItem Content="Mitsubishi"/>
-                        <ComboBoxItem Content="Kcnc"/>
-                        <ComboBoxItem Content="Mazak"/>
-                        <ComboBoxItem Content="Heidenhain"/>
+                        <ComboBoxItem Content="MITSUBISHI"/>
+                        <ComboBoxItem Content="KCNC"/>
+                        <ComboBoxItem Content="MAZAK"/>
+                        <ComboBoxItem Content="HEIDENHAIN"/>
                     </ComboBox>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,2">
@@ -197,6 +197,12 @@
                     <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
                         <Button x:Name="ButtonTorusMachineListItemAdd" Content="Add Machine" Margin="0,2" Click="Button_Click"/>
                         <Button x:Name="ButtonTorusMachineListItemRemove" Content="Remove Selected" Margin="0,2" Click="Button_Click"/>
+                    </StackPanel>
+                    <!-- 정렬/순서 이동 버튼 -->
+                    <StackPanel Grid.Column="3" VerticalAlignment="Bottom" Margin="5,0,0,0">
+                        <Button x:Name="ButtonTorusMachineListArrange" Content="Sort by ID" Margin="0,2" Click="Button_Click"/>
+                        <Button x:Name="ButtonTorusMachineListMoveUp" Content="Move Up" Margin="0,2" Click="Button_Click"/>
+                        <Button x:Name="ButtonTorusMachineListMoveDown" Content="Move Down" Margin="0,2" Click="Button_Click"/>
                     </StackPanel>
                 </Grid>
             </Grid>
