@@ -24,6 +24,7 @@ namespace TorusGateway
         private System.Windows.Forms.NotifyIcon? _notifyIcon;
         private bool _isActuallyClosing = false;
         private bool _torusConnectFailed = false; // Initialize 후 Connect 실패 여부
+        private int _modalDepth = 0; // 모달 창(Settings, Docs 등) 표시 중인 개수
 
         private const int MaxLogLines = 1000;
         private readonly ConcurrentQueue<string> _logQueue = new();
@@ -54,6 +55,7 @@ namespace TorusGateway
             _logTimer.Start();
 
             this.Closing += MainWindow_Closing;
+            this.StateChanged += MainWindow_StateChanged;
 
             // 시스템 트레이 아이콘 초기화
             _notifyIcon = new System.Windows.Forms.NotifyIcon
@@ -126,6 +128,12 @@ namespace TorusGateway
 
         private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
+            // 모달 창이 열려있는 동안은 작업표시줄 등으로 인한 종료/트레이 이동을 차단
+            if (_modalDepth > 0)
+            {
+                e.Cancel = true;
+                return;
+            }
             if (!_isActuallyClosing)
             {
                 e.Cancel = true;
@@ -135,6 +143,13 @@ namespace TorusGateway
                 return;
             }
             // _isActuallyClosing == true면 ExitApplication에서 이미 정리 완료
+        }
+
+        // 모달 창이 열린 상태에서 작업표시줄 클릭 등으로 최소화되는 것을 차단
+        private void MainWindow_StateChanged(object? sender, EventArgs e)
+        {
+            if (_modalDepth > 0 && this.WindowState == WindowState.Minimized)
+                this.WindowState = WindowState.Normal;
         }
 
         private void ShowWindow()
@@ -391,16 +406,20 @@ namespace TorusGateway
                 try { await WebServerCloseAsync(); }
                 catch (Exception ex) { MessageBox.Show($"Server stop failed: {ex.Message}", "Error"); }
             }
-            else if (sender == ButtonDocs)//커스텀 엔드포인트 문서 창 열기
+            else if (sender == ButtonDocs)//커스텀 엔드포인트 문서 모달 창 열기
             {
                 var docsWindow = new DocsWindow { Owner = this };
-                docsWindow.Show();
+                _modalDepth++;
+                try { docsWindow.ShowDialog(); }
+                finally { _modalDepth--; }
             }
             else if (sender == ButtonTorusSetting)//TORUS 설정 모달 창 열기
             {
                 var settingWindow = new Torus.MachineListWindow();
                 settingWindow.Owner = this;
-                settingWindow.ShowDialog();
+                _modalDepth++;
+                try { settingWindow.ShowDialog(); }
+                finally { _modalDepth--; }
             }
             else if (sender == ButtonAbout)//About 정보 표시
             {

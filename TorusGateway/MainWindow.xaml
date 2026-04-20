@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:TorusGateway"
         mc:Ignorable="d"
-        Title="TORUS Gateway" Height="400" Width="850"
+        Title="TORUS Gateway" Height="400" Width="1000"
         Background="{StaticResource BackgroundBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="Segoe UI">
     <Grid Margin="10">
@@ -41,7 +41,7 @@
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
                 <Button x:Name="ButtonAbout" Content="About" Width="60" Click="Button_Click"/>
-<Button x:Name="ButtonMinimizeToTray" Content="To Tray" Width="80" Margin="5,0,0,0" Click="Button_Click"/>
+                <Button x:Name="ButtonMinimizeToTray" Content="To Tray" Width="80" Margin="5,0,0,0" Click="Button_Click"/>
                 <Button x:Name="ButtonExit" Content="Exit" Width="60" Margin="5,0,0,0" Click="Button_Click"/>
             </StackPanel>
         </Grid>
