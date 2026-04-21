@@ -17,7 +17,8 @@ TorusGateway.sln
 TorusGateway/                # 메인 WPF + 내장 웹서버
   App.xaml(.cs)              # 단일 인스턴스 Mutex, 수동 MainWindow 생성, 종료 시 임시 디렉토리 정리
   MainWindow.xaml(.cs)       # 메인 UI - Torus 연결, 웹서버 open/close, Docs, IP 허용목록, 트레이/종료
-  DocsWindow.xaml(.cs)       # 커스텀 엔드포인트 문서 뷰어 (EmbeddedResource CustomEndpoints.md 표시)
+  DocsWindow.xaml(.cs)       # 커스텀 엔드포인트 문서 뷰어 (EmbeddedResource CustomEndpoints.md 표시, 모달)
+  TestRequestWindow.xaml(.cs)# 초기 셋팅용 HTTP 테스터 (GET/POST, JSON body, 모달)
   TorusGateway.csproj        # <InternalsVisibleTo Include="TorusGateway.Tests">, SolutionDir 폴백 포함
   Torus/
     Torus.cs                 # TORUS API 싱글턴 래퍼. _apiLock으로 모든 네이티브 호출 직렬화
@@ -29,6 +30,7 @@ TorusGateway/                # 메인 WPF + 내장 웹서버
     WebServer.cs             # ASP.NET Core 호스트 (Startup/Run/Stop). CORS 미설정(CSRF 방어)
     TorusController.cs       # 단순 pass-through: GET/POST /machine/{*segments}
                              # 응답 필터 헬퍼(static): FilterStatusAndValue, FilterStatusOnly, WrapValueToArray
+                             # body 정규화 헬퍼(static): NormalizeValueKey — Value/VALUE → value
                              # 공용 JSON 옵션: JsonSerOptions, JsonWriterOpts (UnsafeRelaxedJsonEscaping)
     CustomController.cs      # 합성 엔드포인트 모음 + TempDirDownload/Upload 상수 + CleanupOrphanedTempDirs
                              # /machineList (GET), /docs/help (GET),
@@ -45,6 +47,7 @@ TorusGateway.Tests/          # xUnit 테스트 프로젝트 (net8.0-windows, x86
   WrapValueToArrayTests.cs       # 6건
   FilterStatusOnlyTests.cs       # 3건
   RenameValueArrayKeyTests.cs    # 7건
+  NormalizeValueKeyTests.cs      # 8건
   TorusStatusCodesTests.cs       # 4건
 TorusApi/                    # TORUS 네이티브 DLL (빌드시 출력 디렉토리로 복사)
 TorusGateway.info            # 앱 메타데이터 (이름, 버전, GUID)
@@ -70,6 +73,7 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 - `GET /machine/{*segments}?{filter}` → `Torus.GetData(address, filter)` 결과에 필터 적용
   - 응답: status + value만, 단일 원소 배열 해제 (datatype에 "list" 포함 시 유지)
 - `POST /machine/{*segments}?{filter}` + JSON body → `Torus.UpdateData(...)`
+  - body 루트 키 대소문자 정규화 (`NormalizeValueKey`): `Value`/`VALUE` → `value` (TORUS는 소문자만 인식)
   - body `"value"` 키가 단일 값이면 자동 배열 래핑 (`WrapValueToArray`)
   - 응답: status만
 
@@ -104,6 +108,18 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 - Named Mutex(`TorusGateway_SingleInstance`)로 중복 실행 방지
 - 중복 실행 시 기존 프로세스의 `MainWindowHandle`로 트레이/작업표시줄 상태를 판별하여 안내 메시지 표시
 - `--auto-connect` 인자로 재시작 시에는 Mutex 체크를 건너뜀
+
+## 모달 창 가드
+- `MainWindow._modalDepth` 카운터로 모달 창(`MachineListWindow`/`DocsWindow`/`TestRequestWindow`)의 열림 상태 추적
+- 모달 열려있는 동안 `MainWindow_Closing`은 종료/트레이 이동을 차단, `MainWindow_StateChanged`는 최소화를 `Normal`로 복귀
+- 작업표시줄 클릭 등으로 owner가 최소화·종료되는 것을 방지 (WPF의 ShowDialog가 owner를 disable하긴 하지만 작업표시줄 입력은 막지 못함)
+
+## Test Request 창
+- 초기 셋팅 확인용 모달 HTTP 테스터 (`TestRequestWindow`)
+- Base URL은 메인 창의 Host/Port에서 채움 (`0.0.0.0`/`*`/빈 값은 `127.0.0.1`로 대체)
+- Method 드롭다운 (GET/POST), Path, Body(POST만), 응답(상태코드 + 본문) 표시
+- POST 선택 시 라벨에 `{"value": 25.5}` 형태 힌트, body가 비어있으면 템플릿 자동 삽입
+- 10초 타임아웃, `Content-Type: application/json` 고정
 
 ## MachineList.xml 관리
 - TORUS Settings 버튼으로 `MachineListWindow` 모달 열기. 경로가 실제 파일이면 자동 Read.

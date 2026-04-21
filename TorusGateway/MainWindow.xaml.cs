@@ -413,6 +413,14 @@ namespace TorusGateway
                 try { docsWindow.ShowDialog(); }
                 finally { _modalDepth--; }
             }
+            else if (sender == ButtonTestRequest)//GET/POST 테스트 모달 창 열기
+            {
+                var testWindow = new TestRequestWindow(TextBoxWebServerHost.Text, TextBoxWebServerPort.Text)
+                { Owner = this };
+                _modalDepth++;
+                try { testWindow.ShowDialog(); }
+                finally { _modalDepth--; }
+            }
             else if (sender == ButtonTorusSetting)//TORUS 설정 모달 창 열기
             {
                 var settingWindow = new Torus.MachineListWindow();

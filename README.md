@@ -17,7 +17,7 @@ dotnet build TorusGateway.sln -c Release
 ```bash
 dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 ```
-- xUnit 기반. 순수 헬퍼 함수(`FilterStatusAndValue`, `WrapValueToArray`, `FilterStatusOnly`, `RenameValueArrayKey`, `TorusStatusCodes.GetDescription`)를 커버.
+- xUnit 기반. 순수 헬퍼 함수(`FilterStatusAndValue`, `WrapValueToArray`, `FilterStatusOnly`, `RenameValueArrayKey`, `NormalizeValueKey`, `TorusStatusCodes.GetDescription`)를 커버.
 - 테스트 접근을 위해 `TorusGateway.csproj`에 `<InternalsVisibleTo Include="TorusGateway.Tests" />` 설정.
 
 ## Sourcecode
@@ -30,6 +30,7 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
   - POST 응답은 `status`만 남김.
   - 두 경우 모두 `status != 0`이면 `error` 키에 매핑된 설명 자동 삽입.
   - 공용 JSON 옵션(`JsonSerOptions`, `JsonWriterOpts`)은 `UnsafeRelaxedJsonEscaping`을 적용해 한글/특수문자 이스케이프 방지.
+  - POST body는 `NormalizeValueKey`로 `Value`/`VALUE` 등 대소문자 변형을 소문자 `value`로 정규화(TORUS는 소문자만 인식).
 - `WebServer/CustomController.cs`는 이 앱이 중간에 가공하는 **합성 엔드포인트** 모음.
   - `/machineList` (GET): `Api.getMachinesInfo` 래핑 + `vendorCode→vendor` 리네임.
   - `/machine/channel/mainProgramPath` (GET/POST): GET은 `currentProgram/mainFile/programNameWithPath`로 리라이트, POST는 `Api.CNCFileExecute` 래핑.
@@ -40,6 +41,8 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 - `WebServer/TorusStatusCodes.cs`는 TORUS의 `NC_RET` 에러 코드를 영문(일부 한글 원문) 설명으로 매핑.
 - `WebServer/CustomEndpoints.md`는 커스텀 엔드포인트 안내 문서(한/영 병행). 임베디드 리소스로 빌드 시 DLL에 포함되어 `/docs/help` 및 `DocsWindow` 양쪽에서 동일 소스 사용.
 - `DocsWindow.xaml(.cs)`는 메인 창의 `Docs` 버튼으로 열리며 위 마크다운 원문을 읽기 전용 TextBox로 표시.
+- `TestRequestWindow.xaml(.cs)`는 메인 창의 `Test Request` 버튼으로 열리는 초기 셋팅 확인용 HTTP 테스터(GET/POST, JSON body, 응답 표시). Base URL은 현재 Host/Port로 자동 채움(`0.0.0.0`은 `127.0.0.1`로 대체).
+- `MainWindow`는 모달 창(`MachineListWindow`/`DocsWindow`/`TestRequestWindow`)이 열려 있는 동안 `_modalDepth` 카운터로 트레이 이동/최소화/종료를 차단.
 
 ## 프로젝트 구조
 ---
@@ -47,8 +50,9 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 TorusGateway.sln
 TorusGateway/
   App.xaml(.cs)              # WPF 앱 엔트리 (단일 인스턴스 Mutex, 수동 MainWindow 생성, 종료 시 임시 디렉토리 정리)
-  MainWindow.xaml(.cs)       # 메인 UI: Torus 연결, 웹서버 시작/종료, Docs, IP 허용목록, 트레이/종료
-  DocsWindow.xaml(.cs)       # 커스텀 엔드포인트 문서 뷰어 (임베디드 CustomEndpoints.md 표시)
+  MainWindow.xaml(.cs)       # 메인 UI: Torus 연결, 웹서버 시작/종료, Docs, Test Request, IP 허용목록, 트레이/종료. 모달 중 트레이/최소화 차단
+  DocsWindow.xaml(.cs)       # 커스텀 엔드포인트 문서 뷰어 (임베디드 CustomEndpoints.md 표시, 모달)
+  TestRequestWindow.xaml(.cs)# 초기 셋팅용 HTTP 테스터 (GET/POST, JSON body, 모달)
   TorusGateway.csproj
   Torus/
     Torus.cs                 # TORUS API 래퍼 (싱글턴). GetData/UpdateData/UploadFile/DownloadFile/DeleteFile/ExecuteCNCFile/GetMachinesInfo. _apiLock으로 호출 직렬화
@@ -68,6 +72,7 @@ TorusGateway.Tests/
   WrapValueToArrayTests.cs
   FilterStatusOnlyTests.cs
   RenameValueArrayKeyTests.cs
+  NormalizeValueKeyTests.cs
   TorusStatusCodesTests.cs
 TorusApi/                    # TORUS 네이티브 DLL (빌드 시 출력 디렉토리로 복사)
 TorusGateway.info            # 앱 메타데이터 (이름, 버전, GUID)
@@ -75,6 +80,12 @@ TorusGateway.info            # 앱 메타데이터 (이름, 버전, GUID)
 
 ## Updates
 ---
+v1.3.2
+- POST body 대소문자 정규화: `Value`/`VALUE` 등 루트 키 변형을 소문자 `value`로 자동 변환(TORUS는 소문자만 인식). 모든 POST 엔드포인트에 적용.
+- 신규 UI: `Test Request` 버튼 → `TestRequestWindow`로 GET/POST 간이 테스터 제공. Base URL/Path/JSON body/응답 표시. POST 선택 시 `{"value": }` 템플릿 자동 삽입 + 힌트.
+- UX: `DocsWindow`도 `TORUS Settings`와 동일하게 모달. 모달이 열려 있는 동안 메인 창의 트레이 이동/최소화/종료를 차단(`_modalDepth` 카운터).
+- 테스트: `NormalizeValueKeyTests` 8건 추가 (총 38건).
+
 v1.3.1
 - 신규 엔드포인트: `GET /machineList` — `Api.getMachinesInfo` 래핑. `vendorCode→vendor` 키 리네임, 단일 머신 연결 시에도 `value` 배열 유지. 원본에 `status`가 없으므로 `status:0` 주입.
 - 신규 엔드포인트: `GET /docs/help` — 임베디드 마크다운(`CustomEndpoints.md`) 원문 반환(`text/markdown; charset=utf-8`).

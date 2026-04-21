@@ -136,6 +136,41 @@ namespace TorusGateway.WebServer
             return Encoding.UTF8.GetString(ms.ToArray());
         }
 
+        // body 루트의 대소문자 변형("Value", "VALUE" 등) 키를 소문자 "value"로 정규화.
+        // TORUS는 정확히 소문자 "value"만 인식하므로, 클라이언트 편의를 위해 게이트웨이에서 변환한다.
+        // 이미 정확한 "value" 키가 있으면 우선하고 변형 키는 건드리지 않는다(충돌 시 정식 키 유지).
+        internal static string NormalizeValueKey(string json)
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return json;
+
+            bool hasExact = false;
+            string? variantKey = null;
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.Name == "value") { hasExact = true; }
+                else if (variantKey == null
+                         && string.Equals(prop.Name, "value", StringComparison.OrdinalIgnoreCase))
+                {
+                    variantKey = prop.Name;
+                }
+            }
+            if (variantKey == null || hasExact) return json;
+
+            using var ms = new MemoryStream();
+            using var writer = new Utf8JsonWriter(ms, JsonWriterOpts);
+            writer.WriteStartObject();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                writer.WritePropertyName(prop.Name == variantKey ? "value" : prop.Name);
+                prop.Value.WriteTo(writer);
+            }
+            writer.WriteEndObject();
+            writer.Flush();
+            return Encoding.UTF8.GetString(ms.ToArray());
+        }
+
         // TORUS Item의 "value" 키는 항상 배열이어야 한다. (예: {"value": [42]})
         // 클라이언트 편의를 위해 단일 값({"value": 42})이 오면 자동으로 배열로 감싼다.
         internal static string WrapValueToArray(string json)
@@ -211,6 +246,7 @@ namespace TorusGateway.WebServer
                 // 비동기적으로 원시 데이터를 읽어옴
                 using var reader = new StreamReader(Request.Body);
                 string body = await reader.ReadToEndAsync();
+                body = NormalizeValueKey(body);
                 body = WrapValueToArray(body);
 
                 string updateDataResult = Torus.Torus.Instance.UpdateData(address, filter, body);

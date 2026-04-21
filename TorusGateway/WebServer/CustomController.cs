@@ -143,6 +143,7 @@ namespace TorusGateway.WebServer
 
                 using var reader = new StreamReader(Request.Body);
                 string body = await reader.ReadToEndAsync();
+                body = TorusController.NormalizeValueKey(body);
 
                 // body에서 "value" 추출. 배열이면 첫 번째 요소, 문자열이면 그대로.
                 using var doc = JsonDocument.Parse(body);
@@ -349,6 +350,7 @@ namespace TorusGateway.WebServer
 
                 using var reader = new StreamReader(Request.Body);
                 string body = await reader.ReadToEndAsync();
+                body = TorusController.NormalizeValueKey(body);
 
                 using var doc = JsonDocument.Parse(body);
                 if (!doc.RootElement.TryGetProperty("value", out var valueProp))
@@ -393,6 +395,7 @@ namespace TorusGateway.WebServer
 
                 using var reader = new StreamReader(Request.Body);
                 string body = await reader.ReadToEndAsync();
+                body = TorusController.NormalizeValueKey(body);
 
                 using var doc = JsonDocument.Parse(body);
                 if (!doc.RootElement.TryGetProperty("value", out var valueProp))
