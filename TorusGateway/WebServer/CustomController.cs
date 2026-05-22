@@ -36,10 +36,18 @@ namespace TorusGateway.WebServer
                     if (!Directory.Exists(fullRoot)) continue;
                     foreach (var sub in Directory.EnumerateDirectories(fullRoot))
                     {
-                        try { Directory.Delete(sub, true); } catch { /* 사용 중이면 다음 시작 때 다시 시도 */ }
+                        try { Directory.Delete(sub, true); }
+                        catch (Exception ex)
+                        {
+                            // 사용 중이면 다음 시작 때 다시 시도. 누적 추적용으로 로그만 남김.
+                            FileLogger.WriteWarn($"Orphan temp dir cleanup failed: {sub} - {ex.Message}");
+                        }
                     }
                 }
-                catch { /* root 자체 접근 실패 무시 */ }
+                catch (Exception ex)
+                {
+                    FileLogger.WriteWarn($"Orphan temp root access failed: {root} - {ex.Message}");
+                }
             }
         }
 
@@ -118,6 +126,11 @@ namespace TorusGateway.WebServer
                 var response = JsonSerializer.Serialize(new { status = 0, value = content }, jsonOptions);
                 return new ContentResult { Content = response, ContentType = "application/json", StatusCode = 200 };
             }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "NC file content read failed");
@@ -125,7 +138,14 @@ namespace TorusGateway.WebServer
             }
             finally
             {
-                if (tempDirectory != null) try { Directory.Delete(tempDirectory, true); } catch { }
+                if (tempDirectory != null)
+                {
+                    try { Directory.Delete(tempDirectory, true); }
+                    catch (Exception ex)
+                    {
+                        FileLogger.WriteWarn($"Temp dir cleanup failed: {tempDirectory} - {ex.Message}");
+                    }
+                }
             }
         }
 
@@ -135,6 +155,7 @@ namespace TorusGateway.WebServer
         public async Task<ActionResult<string>> PostNcFileContent()
         {
             string? tempDirectory = null;
+            bool bodyParseDone = false;
             try
             {
                 var (machineID, ncPath) = ExtractNcMemoryPathParams();
@@ -147,6 +168,7 @@ namespace TorusGateway.WebServer
 
                 // body에서 "value" 추출. 배열이면 첫 번째 요소, 문자열이면 그대로.
                 using var doc = JsonDocument.Parse(body);
+                bodyParseDone = true;
                 if (!doc.RootElement.TryGetProperty("value", out var valueProp))
                     return ErrorResponse(400, "'value' field is required");
 
@@ -182,6 +204,16 @@ namespace TorusGateway.WebServer
 
                 return new ContentResult { Content = uploadResult, ContentType = "application/json", StatusCode = 200 };
             }
+            catch (JsonException ex)
+            {
+                if (!bodyParseDone)
+                {
+                    _logger.LogWarning(ex, "Invalid JSON in request body");
+                    return ErrorResponse(400, "Invalid JSON in request body");
+                }
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "NC file content write failed");
@@ -189,7 +221,14 @@ namespace TorusGateway.WebServer
             }
             finally
             {
-                if (tempDirectory != null) try { Directory.Delete(tempDirectory, true); } catch { }
+                if (tempDirectory != null)
+                {
+                    try { Directory.Delete(tempDirectory, true); }
+                    catch (Exception ex)
+                    {
+                        FileLogger.WriteWarn($"Temp dir cleanup failed: {tempDirectory} - {ex.Message}");
+                    }
+                }
             }
         }
 
@@ -248,6 +287,11 @@ namespace TorusGateway.WebServer
                     ContentType = "application/json",
                     StatusCode = 200
                 };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
             }
             catch (Exception ex)
             {
@@ -324,6 +368,11 @@ namespace TorusGateway.WebServer
                     StatusCode = 200
                 };
             }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Main program path read failed");
@@ -336,6 +385,7 @@ namespace TorusGateway.WebServer
         [HttpPost("/machine/channel/mainProgramPath")]
         public async Task<ActionResult<string>> PostMainProgramPath()
         {
+            bool bodyParseDone = false;
             try
             {
                 int machineID = -1;
@@ -353,6 +403,7 @@ namespace TorusGateway.WebServer
                 body = TorusController.NormalizeValueKey(body);
 
                 using var doc = JsonDocument.Parse(body);
+                bodyParseDone = true;
                 if (!doc.RootElement.TryGetProperty("value", out var valueProp))
                     return ErrorResponse(400, "'value' field is required");
 
@@ -375,6 +426,16 @@ namespace TorusGateway.WebServer
 
                 return new ContentResult { Content = executeResult, ContentType = "application/json", StatusCode = 200 };
             }
+            catch (JsonException ex)
+            {
+                if (!bodyParseDone)
+                {
+                    _logger.LogWarning(ex, "Invalid JSON in request body");
+                    return ErrorResponse(400, "Invalid JSON in request body");
+                }
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Main program path set/execute failed");
@@ -387,6 +448,7 @@ namespace TorusGateway.WebServer
         [HttpPost("/machine/ncMemoryPath/exist")]
         public async Task<ActionResult<string>> PostNcFileExist()
         {
+            bool bodyParseDone = false;
             try
             {
                 var (machineID, ncPath) = ExtractNcMemoryPathParams();
@@ -398,6 +460,7 @@ namespace TorusGateway.WebServer
                 body = TorusController.NormalizeValueKey(body);
 
                 using var doc = JsonDocument.Parse(body);
+                bodyParseDone = true;
                 if (!doc.RootElement.TryGetProperty("value", out var valueProp))
                     return ErrorResponse(400, "'value' field is required");
 
@@ -418,6 +481,16 @@ namespace TorusGateway.WebServer
                     return TorusErrorResponse(delStatus);
 
                 return new ContentResult { Content = deleteResult, ContentType = "application/json", StatusCode = 200 };
+            }
+            catch (JsonException ex)
+            {
+                if (!bodyParseDone)
+                {
+                    _logger.LogWarning(ex, "Invalid JSON in request body");
+                    return ErrorResponse(400, "Invalid JSON in request body");
+                }
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
             }
             catch (Exception ex)
             {

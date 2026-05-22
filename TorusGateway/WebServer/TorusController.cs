@@ -74,6 +74,11 @@ namespace TorusGateway.WebServer
                     StatusCode = 200
                 };
             }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response: {Segments}", segments);
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to query machine data: {Segments}", segments);
@@ -239,6 +244,7 @@ namespace TorusGateway.WebServer
         [HttpPost("{*segments}")]
         public async Task<ActionResult<string>> PostTorusUpdateData(string segments)
         {
+            bool bodyParseDone = false;
             try
             {
                 var (address, filter) = BuildAddressAndFilter(segments);
@@ -248,6 +254,7 @@ namespace TorusGateway.WebServer
                 string body = await reader.ReadToEndAsync();
                 body = NormalizeValueKey(body);
                 body = WrapValueToArray(body);
+                bodyParseDone = true;
 
                 string updateDataResult = Torus.Torus.Instance.UpdateData(address, filter, body);
                 return new ContentResult
@@ -256,6 +263,16 @@ namespace TorusGateway.WebServer
                     ContentType = "application/json",
                     StatusCode = 200
                 };
+            }
+            catch (JsonException ex)
+            {
+                if (!bodyParseDone)
+                {
+                    _logger.LogWarning(ex, "Invalid JSON in request body: {Segments}", segments);
+                    return ErrorResponse(400, "Invalid JSON in request body");
+                }
+                _logger.LogError(ex, "Invalid JSON in TORUS response: {Segments}", segments);
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
             }
             catch (Exception ex)
             {

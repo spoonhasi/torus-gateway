@@ -4,7 +4,6 @@ using System.Windows;
 using System.Windows.Threading;
 using TorusGateway.Torus;
 using TorusGateway.WebServer;
-using static TorusGateway.Torus.MachineListControl;
 
 namespace TorusGateway
 {
@@ -33,6 +32,8 @@ namespace TorusGateway
 
         private const string ConfigFile = "config.ini";
         private const string ConfigSection = "MainWindow";
+        private const string LoggingSection = "Logging";
+        private const int DefaultLogMaxTotalMB = 50;
 
         public MainWindow()
         {
@@ -208,13 +209,14 @@ namespace TorusGateway
             Environment.Exit(0);
         }
 
-        // 라디오 버튼 전환 시 IP 지정 패널의 표시 여부만 갱신
+        // 라디오 버튼 전환 시 IP 지정 패널의 표시 여부 갱신 + 실행 중이면 즉시 반영.
         private void RadioAccess_Checked(object sender, RoutedEventArgs e)
         {
             if (PanelAllowedIPs == null) return; // InitializeComponent 중 이벤트 발생 대비
             PanelAllowedIPs.Visibility = RadioAccessSpecific.IsChecked == true
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+            ApplyAllowlistIfRunning();
         }
 
         // config.ini의 AllowedIPs 문자열을 읽어 라디오 상태/리스트로 복원
@@ -263,27 +265,31 @@ namespace TorusGateway
             catch { return false; }
         }
 
-        // 웹서버 실행 중엔 접근 제어 UI를 잠금 (실행 중 변경은 재시작해야 반영되므로)
-        private void SetAccessControlsEnabled(bool enabled)
+        // 웹서버 실행 중 접근 제어가 바뀌면 즉시 반영 + config 저장.
+        private void ApplyAllowlistIfRunning()
         {
-            RadioAccessAll.IsEnabled = enabled;
-            RadioAccessLocal.IsEnabled = enabled;
-            RadioAccessSpecific.IsEnabled = enabled;
-            TextBoxNewIP.IsEnabled = enabled;
-            ButtonAddIP.IsEnabled = enabled;
-            ButtonRemoveIP.IsEnabled = enabled;
+            if (_webServer == null) return;
+            var csv = GetAllowedIPsCsv();
+            _webServer.UpdateAllowlist(csv);
+            ConfigManager.Write(ConfigFile, ConfigSection, "AllowedIPs", csv);
         }
 
         private void LoadSettings()
         {
-            TextBoxWebServerHost.Text = ReadConfig(ConfigFile, ConfigSection, "Host", "0.0.0.0");
-            TextBoxWebServerPort.Text = ReadConfig(ConfigFile, ConfigSection, "Port", "5001");
-            LoadAccessMode(ReadConfig(ConfigFile, ConfigSection, "AllowedIPs", "*"));
+            TextBoxWebServerHost.Text = ConfigManager.Read(ConfigFile, ConfigSection, "Host", "0.0.0.0");
+            TextBoxWebServerPort.Text = ConfigManager.Read(ConfigFile, ConfigSection, "Port", "5001");
+            LoadAccessMode(ConfigManager.Read(ConfigFile, ConfigSection, "AllowedIPs", "*"));
 
-            if (double.TryParse(ReadConfig(ConfigFile, ConfigSection, "Width", ""), out double w) && w >= 200)
+            if (double.TryParse(ConfigManager.Read(ConfigFile, ConfigSection, "Width", ""), out double w) && w >= 200)
                 this.Width = w;
-            if (double.TryParse(ReadConfig(ConfigFile, ConfigSection, "Height", ""), out double h) && h >= 150)
+            if (double.TryParse(ConfigManager.Read(ConfigFile, ConfigSection, "Height", ""), out double h) && h >= 150)
                 this.Height = h;
+
+            // 파일 로그 초기화 (0이면 비활성화)
+            int maxLogMB = DefaultLogMaxTotalMB;
+            if (int.TryParse(ConfigManager.Read(ConfigFile, LoggingSection, "MaxTotalMB", DefaultLogMaxTotalMB.ToString()), out int m) && m >= 0)
+                maxLogMB = m;
+            FileLogger.Init(maxLogMB);
         }
 
         // 창 크기만 저장 (창 닫기/종료/재시작/트레이 시)
@@ -291,17 +297,17 @@ namespace TorusGateway
         {
             if (this.WindowState == WindowState.Normal)
             {
-                WriteConfig(ConfigFile, ConfigSection, "Width", this.Width.ToString("F0"));
-                WriteConfig(ConfigFile, ConfigSection, "Height", this.Height.ToString("F0"));
+                ConfigManager.Write(ConfigFile, ConfigSection, "Width", this.Width.ToString("F0"));
+                ConfigManager.Write(ConfigFile, ConfigSection, "Height", this.Height.ToString("F0"));
             }
         }
 
         // 서버 관련 설정 저장 (WebServer Open 성공 시에만)
         private void SaveServerSettings()
         {
-            WriteConfig(ConfigFile, ConfigSection, "Host", TextBoxWebServerHost.Text);
-            WriteConfig(ConfigFile, ConfigSection, "Port", TextBoxWebServerPort.Text);
-            WriteConfig(ConfigFile, ConfigSection, "AllowedIPs", GetAllowedIPsCsv());
+            ConfigManager.Write(ConfigFile, ConfigSection, "Host", TextBoxWebServerHost.Text);
+            ConfigManager.Write(ConfigFile, ConfigSection, "Port", TextBoxWebServerPort.Text);
+            ConfigManager.Write(ConfigFile, ConfigSection, "AllowedIPs", GetAllowedIPsCsv());
         }
 
         //TORUS에 연결하기 전에 App 등록정보를 TORUS 운용 클래스에 입력합니다.
@@ -338,7 +344,6 @@ namespace TorusGateway
                 ButtonWebServerClose.IsEnabled = false;
                 TextBoxWebServerHost.IsReadOnly = false;
                 TextBoxWebServerPort.IsReadOnly = false;
-                SetAccessControlsEnabled(true);
             }
         }
 
@@ -399,7 +404,6 @@ namespace TorusGateway
                 ButtonWebServerClose.IsEnabled = true;
                 TextBoxWebServerHost.IsReadOnly = true;
                 TextBoxWebServerPort.IsReadOnly = true;
-                SetAccessControlsEnabled(false);
             }
             else if (sender == ButtonWebServerClose)//게이트웨이 서버 종료
             {
@@ -450,11 +454,15 @@ namespace TorusGateway
                 if (!ListBoxAllowedIPs.Items.Contains(entry))
                     ListBoxAllowedIPs.Items.Add(entry);
                 TextBoxNewIP.Clear();
+                ApplyAllowlistIfRunning();
             }
             else if (sender == ButtonRemoveIP)//허용 IP 제거
             {
                 if (ListBoxAllowedIPs.SelectedItem is string s)
+                {
                     ListBoxAllowedIPs.Items.Remove(s);
+                    ApplyAllowlistIfRunning();
+                }
             }
             else if (sender == ButtonMinimizeToTray)//트레이로 보내기
             {

@@ -16,9 +16,10 @@ TORUS 플랫폼의 REST API 게이트웨이. TORUS(산업용 CNC 장비 관리 �
 TorusGateway.sln
 TorusGateway/                # 메인 WPF + 내장 웹서버
   App.xaml(.cs)              # 단일 인스턴스 Mutex, 수동 MainWindow 생성, 종료 시 임시 디렉토리 정리
-  MainWindow.xaml(.cs)       # 메인 UI - Torus 연결, 웹서버 open/close, Docs, IP 허용목록, 트레이/종료
+  MainWindow.xaml(.cs)       # 메인 UI - Torus 연결, 웹서버 open/close, Docs, IP 허용목록(런타임 갱신), 트레이/종료
   DocsWindow.xaml(.cs)       # 커스텀 엔드포인트 문서 뷰어 (EmbeddedResource CustomEndpoints.md 표시, 모달)
   TestRequestWindow.xaml(.cs)# 초기 셋팅용 HTTP 테스터 (GET/POST, JSON body, 모달)
+  ConfigManager.cs           # config.ini (Win32 INI) 읽기/쓰기 헬퍼 (static)
   TorusGateway.csproj        # <InternalsVisibleTo Include="TorusGateway.Tests">, SolutionDir 폴백 포함
   Torus/
     Torus.cs                 # TORUS API 싱글턴 래퍼. _apiLock으로 모든 네이티브 호출 직렬화
@@ -27,20 +28,22 @@ TorusGateway/                # 메인 WPF + 내장 웹서버
     MachineListControl.xaml(.cs)  # MachineList.xml 편집 UserControl (재사용 가능, 외부 의존 없음)
     MachineListWindow.xaml(.cs)   # 위 컨트롤을 감싼 모달 창 (재사용 래퍼)
   WebServer/
-    WebServer.cs             # ASP.NET Core 호스트 (Startup/Run/Stop). CORS 미설정(CSRF 방어)
+    WebServer.cs             # ASP.NET Core 호스트 + 미들웨어 inline 정의(IpAllowlistMiddleware, RequestLoggingMiddleware,
+                             # IpAllowlistOptions). UpdateAllowlist(csv)로 런타임 IP 목록 교체. CORS 미설정(CSRF 방어)
     TorusController.cs       # 단순 pass-through: GET/POST /machine/{*segments}
                              # 응답 필터 헬퍼(static): FilterStatusAndValue, FilterStatusOnly, WrapValueToArray
                              # body 정규화 헬퍼(static): NormalizeValueKey — Value/VALUE → value
                              # 공용 JSON 옵션: JsonSerOptions, JsonWriterOpts (UnsafeRelaxedJsonEscaping)
+                             # JsonException 분리: body 파싱 실패 400, TORUS 응답 파싱 실패 502
     CustomController.cs      # 합성 엔드포인트 모음 + TempDirDownload/Upload 상수 + CleanupOrphanedTempDirs
                              # /machineList (GET), /docs/help (GET),
                              # /machine/channel/mainProgramPath (GET/POST),
                              # /machine/ncMemoryPath/content (GET/POST), /machine/ncMemoryPath/exist (POST)
                              # 헬퍼: RenameValueArrayKey, ErrorResponse, TorusErrorResponse
+                             # JsonException 분리: body 파싱 실패 400, TORUS 응답 파싱 실패 502
     CustomEndpoints.md       # 커스텀 엔드포인트 안내 문서 (EmbeddedResource, 한/영 병행)
     TorusStatusCodes.cs      # TORUS NC_RET enum 값 → 설명 문자열 매핑
-    RequestLoggingMiddleware.cs  # 요청 로깅 (UI ListBox에만 표시 - 파일 로그 없음)
-    IpAllowlistMiddleware.cs     # 클라이언트 IP 허용목록 검사
+    FileLogger.cs            # 일자별 파일 로그(static). logs/yyyy-MM-dd.log, ERROR/WARN만, 총 사이즈 캡
 TorusGateway.Tests/          # xUnit 테스트 프로젝트 (net8.0-windows, x86)
   TorusGateway.Tests.csproj
   FilterStatusAndValueTests.cs   # 10건
@@ -49,6 +52,8 @@ TorusGateway.Tests/          # xUnit 테스트 프로젝트 (net8.0-windows, x86
   RenameValueArrayKeyTests.cs    # 7건
   NormalizeValueKeyTests.cs      # 8건
   TorusStatusCodesTests.cs       # 4건
+  IpAllowlistOptionsTests.cs     # 12건 (Star/CIDR/IPv6 loopback 정규화/Update 시나리오)
+  ConfigManagerTests.cs          # 5건 (Write→Read, 기본값 기록, 섹션 격리)
 TorusApi/                    # TORUS 네이티브 DLL (빌드시 출력 디렉토리로 복사)
 TorusGateway.info            # 앱 메타데이터 (이름, 버전, GUID)
 ```
@@ -89,6 +94,8 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 ## 응답 공통 형식
 - 성공: `{"status":0, "value": ...}` 또는 `{"status":0}`
 - 앱 자체 오류: `{"status":-1, "error":"<message>"}`, HTTP 400/404/500
+- 요청 body JSON 파싱 실패: HTTP 400 (`"Invalid JSON in request body"`)
+- TORUS 응답 JSON 파싱 실패: HTTP 502 (`"Invalid JSON response from TORUS"`)
 - TORUS 호출 실패: `{"status":<TORUS 코드>, "error":"<매핑된 설명>"}`, HTTP 502
 - 매핑은 `TorusStatusCodes.cs`에서 정의 (0x0, 0x21B*****, 0x20206028 등)
 
@@ -126,7 +133,7 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 - NCmachine 속성: activate, name, id, vendorCode, address, port, exDllPath, connectCode, ncVersionCode, toolSystem, username, password
 - 지원 vendorCode: FANUC, SIEMENS, CSCAM, MITSUBISHI, KCNC, MAZAK, HEIDENHAIN (대문자)
 - Sort by ID / Move Up / Move Down 버튼으로 목록 순서 조작
-- 설정 파일 경로는 `config.ini`에 저장 (Win32 INI API 사용)
+- 설정 파일 경로는 `config.ini`에 저장. INI 읽기/쓰기는 `ConfigManager` static 클래스를 통해 일원화 (P/Invoke로 Win32 INI API 호출)
 
 ## 동시성 / 스레드
 - `Torus._apiLock`으로 모든 네이티브 API 호출 직렬화 (DLL 스레드 안전성 불명확)
@@ -137,6 +144,19 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 - 요청마다 `yyyyMMddHHmmssfff_<GUID8>` 하위 디렉토리 생성
 - 정상 완료 시 `OnCompleted` 콜백 또는 `finally`에서 정리
 - 크래시 후 남은 잔여물은 앱 시작 시 `CustomController.CleanupOrphanedTempDirs()`가 처리
+- 정리 실패는 `FileLogger.WriteWarn`으로 기록 (이전엔 silent catch였음)
+
+## 파일 로그
+- `FileLogger` (static, `WebServer/FileLogger.cs`) — 4xx/5xx 응답만 파일에 기록 (UI ListBox엔 모두 표시)
+- 위치: `<exe 디렉토리>/logs/yyyy-MM-dd.log`, 포맷: `2026-05-22 14:23:45.123 [WARN ] 192.168.1.10 GET /... 404 12ms`
+- 사이즈 캡: 시작 시 + 일자 전환 시 점검, 총 합이 캡 초과면 가장 오래된 파일부터 삭제(최신 1개는 항상 보존)
+- 설정: `config.ini` `[Logging] MaxTotalMB=50` (기본 50MB, 0이면 비활성화)
+- 분류: HTTP 응답 코드 4xx → WARN, 5xx → ERROR. 미들웨어와 임시 디렉토리 cleanup 실패 catch에서 호출
+
+## IP 허용목록 (런타임 갱신)
+- `IpAllowlistOptions`는 내부 상태(immutable record)를 volatile 참조로 보유 — `Update(csv)`로 원자적 교체
+- UI에서 라디오 변경/IP 추가/제거 시 즉시 `WebServer.UpdateAllowlist(csv)` 호출 + `config.ini` 저장
+- 서버 실행 중에도 IP 컨트롤은 활성 상태 유지 (Host/Port만 readonly)
 
 ## 코딩 컨벤션
 - 한국어 주석 사용, 사용자 표시 문자열은 영문

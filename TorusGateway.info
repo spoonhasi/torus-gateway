@@ -1,6 +1,6 @@
 {
 	"App Name": "TorusGateway",
-	"Version": "1.3.2",
+	"Version": "1.4.0",
 	"App ID": "0C1016A3-45BF-4DE9-B0B8-1ECBB948177D",
 	"App File": "$(PlatformDir)/TorusGateway.exe"
 }

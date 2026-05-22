@@ -51,12 +51,15 @@ namespace TorusGateway
 
         private static void CleanupTempDirectories(string dirName)
         {
+            var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dirName);
             try
             {
-                var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dirName);
                 if (Directory.Exists(path)) Directory.Delete(path, true);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                WebServer.FileLogger.WriteWarn($"Temp dir cleanup failed: {path} - {ex.Message}");
+            }
         }
     }
 }

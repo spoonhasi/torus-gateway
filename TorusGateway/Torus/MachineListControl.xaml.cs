@@ -3,8 +3,6 @@ using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Xml.Linq;
@@ -32,32 +30,6 @@ namespace TorusGateway.Torus
     /// </summary>
     public partial class MachineListControl : UserControl
     {
-        [DllImport("kernel32", CharSet = CharSet.Unicode)]
-#pragma warning disable SYSLIB1054 // 컴파일 타임에 P/Invoke 마샬링 코드를 생성하려면 'DllImportAttribute' 대신 'LibraryImportAttribute'를 사용하세요.
-        private static extern long WritePrivateProfileString(string section, string key, string val, string filePath);
-#pragma warning restore SYSLIB1054 // 컴파일 타임에 P/Invoke 마샬링 코드를 생성하려면 'DllImportAttribute' 대신 'LibraryImportAttribute'를 사용하세요.
-
-        [DllImport("kernel32", CharSet = CharSet.Unicode)]
-        private static extern int GetPrivateProfileString(string section, string key, string def, StringBuilder retVal, int size, string filePath);
-
-        //설정 불러오기용 함수
-        public static string ReadConfig(string _settingFileName, string _section, string _key, string _defaultValue = "")
-        {
-            StringBuilder temp = new(255);
-            _ = GetPrivateProfileString(_section, _key, null, temp, 255, System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, _settingFileName));
-            if (temp.ToString() == "")
-            {
-                WriteConfig(_settingFileName, _section, _key, _defaultValue);
-                return _defaultValue;
-            }
-            return temp.ToString();
-        }
-        //설정 저장용 함수
-        public static void WriteConfig(string _settingFileName, string _section, string _key, string _contents)
-        {
-            WritePrivateProfileString(_section, _key, _contents, System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, _settingFileName));
-        }
-
         private ObservableCollection<NCmachine> ncMachineList_ { get; set; } = [];
 
         public string ConfigFilePath { get; set; } = "config.ini";
@@ -90,7 +62,7 @@ namespace TorusGateway.Torus
                 {
                     if (FileSelector(TextBoxTorusRunPath.Text, out string newPath))
                     {
-                        WriteConfig(ConfigFilePath, "Main", "TorusRunPath", newPath);
+                        ConfigManager.Write(ConfigFilePath, "Main", "TorusRunPath", newPath);
                         TextBoxTorusRunPath.Text = newPath;
                     }
                 }
@@ -98,7 +70,7 @@ namespace TorusGateway.Torus
                 {
                     if (FileSelector(TextBoxTorusExitPath.Text, out string newPath))
                     {
-                        WriteConfig(ConfigFilePath, "Main", "TorusExitPath", newPath);
+                        ConfigManager.Write(ConfigFilePath, "Main", "TorusExitPath", newPath);
                         TextBoxTorusExitPath.Text = newPath;
                     }
                 }
@@ -106,7 +78,7 @@ namespace TorusGateway.Torus
                 {
                     if (FileSelector(TextBoxTorusMachineListPath.Text, out string newPath))
                     {
-                        WriteConfig(ConfigFilePath, "Main", "TorusMachineListPath", newPath);
+                        ConfigManager.Write(ConfigFilePath, "Main", "TorusMachineListPath", newPath);
                         TextBoxTorusMachineListPath.Text = newPath;
                     }
                 }
@@ -159,16 +131,16 @@ namespace TorusGateway.Torus
 
         private void LoadPath()
         {
-            TextBoxTorusRunPath.Text = ReadConfig(ConfigFilePath, "Main", "TorusRunPath", "");
-            TextBoxTorusExitPath.Text = ReadConfig(ConfigFilePath, "Main", "TorusExitPath", "");
-            TextBoxTorusMachineListPath.Text = ReadConfig(ConfigFilePath, "Main", "TorusMachineListPath", "");
+            TextBoxTorusRunPath.Text = ConfigManager.Read(ConfigFilePath, "Main", "TorusRunPath", "");
+            TextBoxTorusExitPath.Text = ConfigManager.Read(ConfigFilePath, "Main", "TorusExitPath", "");
+            TextBoxTorusMachineListPath.Text = ConfigManager.Read(ConfigFilePath, "Main", "TorusMachineListPath", "");
         }
 
         private void SavePath()
         {
-            WriteConfig(ConfigFilePath, "Main", "TorusRunPath", TextBoxTorusRunPath.Text);
-            WriteConfig(ConfigFilePath, "Main", "TorusExitPath", TextBoxTorusExitPath.Text);
-            WriteConfig(ConfigFilePath, "Main", "TorusMachineListPath", TextBoxTorusMachineListPath.Text);
+            ConfigManager.Write(ConfigFilePath, "Main", "TorusRunPath", TextBoxTorusRunPath.Text);
+            ConfigManager.Write(ConfigFilePath, "Main", "TorusExitPath", TextBoxTorusExitPath.Text);
+            ConfigManager.Write(ConfigFilePath, "Main", "TorusMachineListPath", TextBoxTorusMachineListPath.Text);
         }
 
         private void ListView_SelectionChanged(object sender, SelectionChangedEventArgs e)

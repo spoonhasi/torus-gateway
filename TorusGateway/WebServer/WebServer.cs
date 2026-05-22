@@ -10,48 +10,57 @@ using System.Threading.Tasks;
 namespace TorusGateway.WebServer
 {
     // 클라이언트 IP 허용 목록. "*"면 전체 허용, 그 외엔 단일 IP(192.168.1.10) 또는 CIDR(192.168.1.0/24) 지원.
+    // 런타임 갱신 가능 — Update()로 CSV를 다시 적용하면 내부 상태가 원자적으로 교체된다.
     public class IpAllowlistOptions
     {
-        public bool AllowAll { get; private set; }
-        private readonly List<IPNetwork> _networks = new();
+        // 내부 상태는 immutable record로 묶어 참조 교체만으로 원자적 갱신.
+        private record State(bool AllowAll, List<IPNetwork> Networks);
 
-        public IpAllowlistOptions(string csv)
+        private volatile State _state;
+
+        public IpAllowlistOptions(string csv) { _state = Parse(csv); }
+
+        public bool AllowAll => _state.AllowAll;
+
+        // UI에서 IP/모드가 바뀌면 즉시 호출해 새 상태로 교체.
+        public void Update(string csv) { _state = Parse(csv); }
+
+        private static State Parse(string csv)
         {
-            if (string.IsNullOrWhiteSpace(csv)) return; // 비어있으면 전체 거부
+            var networks = new List<IPNetwork>();
+            if (string.IsNullOrWhiteSpace(csv)) return new State(false, networks); // 비어있으면 전체 거부
 
             foreach (var raw in csv.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
                 var entry = raw.Trim();
-                if (entry == "*")
-                {
-                    AllowAll = true;
-                    return;
-                }
+                if (entry == "*") return new State(true, networks);
                 try
                 {
                     if (entry.Contains('/'))
                     {
-                        _networks.Add(IPNetwork.Parse(entry));
+                        networks.Add(IPNetwork.Parse(entry));
                     }
                     else
                     {
                         var ip = IPAddress.Parse(entry);
                         int prefix = ip.AddressFamily == AddressFamily.InterNetwork ? 32 : 128;
-                        _networks.Add(new IPNetwork(ip, prefix));
+                        networks.Add(new IPNetwork(ip, prefix));
                     }
                 }
                 catch { /* 잘못된 항목은 무시 */ }
             }
+            return new State(false, networks);
         }
 
         public bool IsAllowed(IPAddress? ip)
         {
-            if (AllowAll) return true;
+            var s = _state; // 원자적 스냅샷
+            if (s.AllowAll) return true;
             if (ip == null) return false;
             if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
             // loopback 정규화: ::1도 127.0.0.1 규칙에 매칭되도록
             if (IPAddress.IsLoopback(ip)) ip = IPAddress.Loopback;
-            foreach (var net in _networks)
+            foreach (var net in s.Networks)
                 if (net.Contains(ip)) return true;
             return false;
         }
@@ -109,10 +118,17 @@ namespace TorusGateway.WebServer
             if (context.Request.Path.StartsWithSegments("/favicon.ico"))
                 return;
 
+            string body = $"{clientIp,-15} {method,-6} {path,-40} {statusCode}  {elapsedMs}ms";
             string timestamp = DateTime.Now.ToString("HH:mm:ss");
-            string logEntry = $"[{timestamp}] {clientIp,-15} {method,-6} {path,-40} {statusCode}  {elapsedMs}ms";
+            string uiEntry = $"[{timestamp}] {body}";
 
-            RequestLogged?.Invoke(logEntry);
+            RequestLogged?.Invoke(uiEntry);
+
+            // 4xx/5xx만 파일 로그에 남김 (정상 응답은 UI에만 표시).
+            if (statusCode >= 500)
+                FileLogger.WriteError(body);
+            else if (statusCode >= 400)
+                FileLogger.WriteWarn(body);
         }
     }
 
@@ -124,22 +140,29 @@ namespace TorusGateway.WebServer
         //Controller Class는 반드시 Public이어야 합니다.
 
         private readonly IHost _webHost;//웹서버의 호스팅 환경 관리 변수
+        private readonly IpAllowlistOptions _allowlist;
         private bool _disposed;
 
         public WebServer(string host, int port, string allowedIpsCsv)
         {
-            var allowlist = new IpAllowlistOptions(allowedIpsCsv);
+            _allowlist = new IpAllowlistOptions(allowedIpsCsv);
             var hostBuilder = Host.CreateDefaultBuilder();
             hostBuilder.ConfigureWebHostDefaults(webBuilder =>
             {
                 webBuilder.ConfigureServices(services =>
                 {
-                    services.AddSingleton(allowlist); // IpAllowlistMiddleware가 DI로 주입받음
+                    services.AddSingleton(_allowlist); // IpAllowlistMiddleware가 DI로 주입받음
                 });
                 webBuilder.UseStartup<Startup>();//Startup 클래스를 앱의 시작 클래스(Entry Point)로 지정
                 webBuilder.UseUrls("http://" + host + ":" + port.ToString());//서버가 리스닝할 URL과 포트 설정(http://localhost:5000)
             });
             _webHost = hostBuilder.Build();
+        }
+
+        // UI에서 IP/모드 변경 시 호출. 재시작 없이 즉시 반영된다.
+        public void UpdateAllowlist(string allowedIpsCsv)
+        {
+            _allowlist.Update(allowedIpsCsv);
         }
 
         public void Start()
