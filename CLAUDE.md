@@ -83,6 +83,7 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
   - 응답: status만
 
 ### Custom (CustomController) — CustomEndpoints.md 참조
+- `GET /health` → `{"status":0,"value":"ok"}` (TORUS 연결 무관 정적 헬스체크, HTTP 200)
 - `GET /docs/help` - 임베디드 CustomEndpoints.md 원문 반환 (text/markdown)
 - `GET /machineList` - 연결된 머신 목록 (`Api.getMachinesInfo` 래핑, vendorCode→vendor, 단일 머신도 배열 유지)
 - `GET /machine/channel/mainProgramPath?machine&channel` - 내부적으로 `data://machine/channel/currentProgram/mainFile/programNameWithPath`로 리라이트

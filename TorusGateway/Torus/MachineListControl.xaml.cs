@@ -185,24 +185,27 @@ namespace TorusGateway.Torus
 
         public static void RunProcess(string filePath)
         {
-            if (System.IO.File.Exists(filePath))
-            {
-                // ProcessStartInfo 설정
-                ProcessStartInfo processStartInfo = new()
-                {
-                    FileName = filePath, // 실행할 배치 파일
-                    WorkingDirectory = System.IO.Path.GetDirectoryName(filePath), // 배치 파일이 있는 폴더
-                    UseShellExecute = true // Windows 셸을 사용하여 실행
-                };
-                // Process 실행
-                using Process process = new();
-                process.StartInfo = processStartInfo;
-                process.Start();
-                process.WaitForExit(); // 프로세스가 종료될 때까지 기다림
-            }
-            else
+            if (!System.IO.File.Exists(filePath))
             {
                 MessageBox.Show("Executable not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            // 배치/실행파일을 띄우기만 하고 종료를 기다리지 않는다(UI 스레드 차단 방지).
+            // UseShellExecute=true로 독립 프로세스로 실행되므로 핸들을 잡아둘 필요 없음.
+            var processStartInfo = new ProcessStartInfo
+            {
+                FileName = filePath,
+                WorkingDirectory = System.IO.Path.GetDirectoryName(filePath),
+                UseShellExecute = true
+            };
+            try
+            {
+                Process.Start(processStartInfo);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to launch: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -222,8 +225,17 @@ namespace TorusGateway.Torus
                 MessageBox.Show("The file name must be \"MachineList.xml\".", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
-            XDocument doc = XDocument.Load(filePath);
-            if (doc.Root.Name.ToString().Equals("machinelist", StringComparison.InvariantCultureIgnoreCase))
+            XDocument doc;
+            try
+            {
+                doc = XDocument.Load(filePath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to read MachineList.xml: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            if (doc.Root != null && doc.Root.Name.ToString().Equals("machinelist", StringComparison.InvariantCultureIgnoreCase))
             {
                 foreach (var element in doc.Root.Elements())
                 {

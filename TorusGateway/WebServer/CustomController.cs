@@ -24,6 +24,12 @@ namespace TorusGateway.WebServer
             _logger = logger;
         }
 
+        // 임시 디렉토리는 항상 실행 파일 디렉토리(BaseDirectory) 기준으로 해석한다.
+        // CWD(GetCurrentDirectory)는 파일 열기 다이얼로그 등으로 바뀔 수 있어,
+        // 같은 BaseDirectory를 쓰는 App.OnExit 정리/FileLogger와 경로가 어긋나는 것을 방지.
+        private static string ResolveTempPath(string relative) =>
+            Path.GetFullPath(relative, AppDomain.CurrentDomain.BaseDirectory);
+
         // 앱 시작 시 호출. 비정상 종료 등으로 남은 이전 세션의 임시 디렉토리를 정리한다.
         // OnCompleted 콜백이 실행되지 못한 경우(프로세스 강제 종료, 크래시)에 대비.
         public static void CleanupOrphanedTempDirs()
@@ -32,7 +38,7 @@ namespace TorusGateway.WebServer
             {
                 try
                 {
-                    string fullRoot = Path.GetFullPath(root, Directory.GetCurrentDirectory());
+                    string fullRoot = ResolveTempPath(root);
                     if (!Directory.Exists(fullRoot)) continue;
                     foreach (var sub in Directory.EnumerateDirectories(fullRoot))
                     {
@@ -103,7 +109,7 @@ namespace TorusGateway.WebServer
 
                 string uniqueName = DateTime.Now.ToString("yyyyMMddHHmmssfff")
                                   + "_" + Guid.NewGuid().ToString("N").Substring(0, 8);
-                string absolutePath = Path.GetFullPath(TempDirDownload + "/" + uniqueName, Directory.GetCurrentDirectory());
+                string absolutePath = ResolveTempPath(TempDirDownload + "/" + uniqueName);
                 tempDirectory = absolutePath;
                 Directory.CreateDirectory(absolutePath);
 
@@ -188,7 +194,7 @@ namespace TorusGateway.WebServer
                 // 임시 파일에 저장 후 TORUS로 업로드
                 string uniqueName = DateTime.Now.ToString("yyyyMMddHHmmssfff")
                                   + "_" + Guid.NewGuid().ToString("N").Substring(0, 8);
-                string tempDir = Path.GetFullPath(TempDirUpload + "/" + uniqueName, Directory.GetCurrentDirectory());
+                string tempDir = ResolveTempPath(TempDirUpload + "/" + uniqueName);
                 tempDirectory = tempDir;
                 Directory.CreateDirectory(tempDir);
 
@@ -230,6 +236,18 @@ namespace TorusGateway.WebServer
                     }
                 }
             }
+        }
+
+        // GET /health - 헬스 체크 (TORUS 연결과 무관한 정적 응답)
+        [HttpGet("/health")]
+        public ContentResult GetHealth()
+        {
+            return new ContentResult
+            {
+                Content = "{\"status\":0,\"value\":\"ok\"}",
+                ContentType = "application/json",
+                StatusCode = 200
+            };
         }
 
         // GET /docs/help - 커스텀 엔드포인트 안내 문서 (임베디드 리소스 CustomEndpoints.md)

@@ -165,12 +165,11 @@ namespace TorusGateway.WebServer
             _allowlist.Update(allowedIpsCsv);
         }
 
-        public void Start()
+        // 웹 서버를 시작한다. 바인딩(포트 충돌 등) 실패 시 예외를 그대로 던져 호출부가 처리하게 한다.
+        // RunAsync(종료까지 대기)는 fire-and-forget이라 바인딩 오류가 묻히므로, StartAsync로 바꿔 즉시 확인.
+        public async Task StartAsync()
         {
-            _ = _webHost.RunAsync().ContinueWith(t =>  // 웹 서버를 비동기적으로 실행합니다.
-            {
-                System.Diagnostics.Debug.WriteLine($"Web server start failed: {t.Exception?.InnerException?.Message}");
-            }, TaskContinuationOptions.OnlyOnFaulted);
+            await _webHost.StartAsync();
         }
 
         public async Task StopAsync()

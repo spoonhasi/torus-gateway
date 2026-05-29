@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using IntelligentApiCS;
 
 namespace TorusGateway.Torus
@@ -11,6 +12,12 @@ namespace TorusGateway.Torus
         // 동시 요청 처리량은 떨어지지만 정확성을 우선함.
         private static readonly object _apiLock = new();
         private static Torus? _instance;
+
+        // 한글 머신명 등이 \uXXXX로 이스케이프되지 않도록 하는 직렬화 옵션.
+        private static readonly JsonSerializerOptions _relaxedJson = new()
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
 
         public string AppName { get; private set; }
         public Guid AppGuid { get; private set; }
@@ -44,9 +51,14 @@ namespace TorusGateway.Torus
         }
         public int Connect()
         {
+            // 이미 한 번 시도했으면(_connectStatus != -1) 네이티브 재초기화를 하지 않고 캐시된 상태를 반환.
+            // TORUS API는 Uninitialize가 없어 재연결은 프로세스 재시작으로만 가능하므로,
+            // 같은 프로세스에서 Api.Initialize는 한 번만 호출되어야 한다.
+            if (_connectStatus != -1)
+                return _connectStatus;
             try
             {
-                Interlocked.CompareExchange(ref _connectStatus, Api.Initialize(AppGuid, AppName), -1);
+                _connectStatus = Api.Initialize(AppGuid, AppName);
             }
             catch (System.BadImageFormatException)
             {
@@ -133,18 +145,36 @@ namespace TorusGateway.Torus
                 if (item == null)
                     return JsonSerializer.Serialize(new { status = result });
 
-                // getMachinesInfo 응답은 status 필드를 포함하지 않으므로 루트 객체 맨 앞에 주입한다.
-                string itemJson = item.ToString();
-                int openBrace = itemJson.IndexOf('{');
-                if (openBrace < 0)
-                    return JsonSerializer.Serialize(new { status = result });
-                int afterBrace = openBrace + 1;
-                while (afterBrace < itemJson.Length && char.IsWhiteSpace(itemJson[afterBrace]))
-                    afterBrace++;
-                bool hasContent = afterBrace < itemJson.Length && itemJson[afterBrace] != '}';
-                string injection = hasContent ? $"\"status\":{result}," : $"\"status\":{result}";
-                return itemJson.Insert(openBrace + 1, injection);
+                return InjectStatus(item.ToString(), result);
             }
+        }
+
+        // getMachinesInfo 응답에는 status 필드가 없으므로 JSON에 주입한다.
+        // 과거엔 문자열에서 '{'를 직접 찾아 끼워넣어, 루트가 배열이면 첫 원소 안에
+        // 잘못 주입되는 등 취약했다. 루트 종류를 판별해 안전하게 처리한다.
+        //  - 객체: status 키 추가/덮어쓰기
+        //  - 객체가 아님(배열/스칼라/null): value로 감싸 status와 함께 반환
+        //  - 파싱 불가: {"status":<status>}만 반환
+        internal static string InjectStatus(string itemJson, int status)
+        {
+            JsonNode? root;
+            try
+            {
+                root = JsonNode.Parse(itemJson);
+            }
+            catch (JsonException)
+            {
+                return JsonSerializer.Serialize(new { status });
+            }
+
+            if (root is JsonObject obj)
+            {
+                obj["status"] = status; // 없으면 추가, 이미 있으면 덮어씀
+                return obj.ToJsonString(_relaxedJson);
+            }
+
+            // 루트가 객체가 아니면(배열/스칼라/null) value로 감싸 status와 함께 반환.
+            return new JsonObject { ["status"] = status, ["value"] = root }.ToJsonString(_relaxedJson);
         }
     }
 }

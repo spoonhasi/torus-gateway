@@ -323,13 +323,21 @@ namespace TorusGateway
         }
 
         //웹서버를 구동합니다. 외부에서 이 웹 서버에 연결합니다. host와 port정보를 필요로 합니다.
-        public void WebServerOpen(string host, int port, string allowedIpsCsv)
+        public async Task WebServerOpenAsync(string host, int port, string allowedIpsCsv)
         {
-            if (_webServer == null)
+            if (_webServer != null) return;
+
+            var server = new WebServer.WebServer(host, port, allowedIpsCsv);
+            try
             {
-                _webServer = new WebServer.WebServer(host, port, allowedIpsCsv);
-                _webServer.Start();
+                await server.StartAsync(); // 바인딩 실패 시 예외 발생
             }
+            catch
+            {
+                server.Dispose();
+                throw; // 호출부(Button_Click)에서 메시지 표시
+            }
+            _webServer = server; // 정상 기동 시에만 보관
         }
 
         //웹서버를 종료합니다.
@@ -392,7 +400,7 @@ namespace TorusGateway
                 }
                 try
                 {
-                    WebServerOpen(host, port, GetAllowedIPsCsv());
+                    await WebServerOpenAsync(host, port, GetAllowedIPsCsv());
                 }
                 catch (Exception ex)
                 {

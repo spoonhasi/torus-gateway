@@ -26,6 +26,15 @@ Simple alive check.
 
 ---
 
+## `GET /health`
+
+헬스 체크. TORUS 연결 상태와 무관하게 항상 동일한 정적 응답을 반환합니다.
+Health check. Always returns the same static response regardless of TORUS connection state.
+
+**Response:** `{ "status": 0, "value": "ok" }`
+
+---
+
 ## `GET /docs/help`
 
 이 문서를 그대로 반환합니다 (`text/markdown; charset=utf-8`).
