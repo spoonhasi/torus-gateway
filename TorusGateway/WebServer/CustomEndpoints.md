@@ -74,6 +74,28 @@ Returns the list of machines currently connected to TORUS. Wraps `Api.getMachine
 
 ---
 
+## `GET /machine/channel/mainProgramName`
+
+지정한 channel의 현재 메인 프로그램 이름 조회 (경로 제외).
+Reads the current main program name (without path) for the specified channel.
+
+내부적으로 `data://machine/channel/currentProgram/mainFile/programName`을 사용합니다.
+Internally uses `data://machine/channel/currentProgram/mainFile/programName`.
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `channel` (int, required): 채널 번호 / channel number
+
+**Response example:**
+```json
+{ "status": 0, "value": "O0001" }
+```
+
+경로까지 포함된 값이 필요하면 `GET /machine/channel/mainProgramPath`를 사용하세요.
+If you need the value including the path, use `GET /machine/channel/mainProgramPath`.
+
+---
+
 ## `GET /machine/channel/mainProgramPath`
 
 지정한 channel의 현재 메인 프로그램 경로 조회.

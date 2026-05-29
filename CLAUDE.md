@@ -82,15 +82,10 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
   - body `"value"` 키가 단일 값이면 자동 배열 래핑 (`WrapValueToArray`)
   - 응답: status만
 
-### Custom (CustomController) — CustomEndpoints.md 참조
-- `GET /health` → `{"status":0,"value":"ok"}` (TORUS 연결 무관 정적 헬스체크, HTTP 200)
-- `GET /docs/help` - 임베디드 CustomEndpoints.md 원문 반환 (text/markdown)
-- `GET /machineList` - 연결된 머신 목록 (`Api.getMachinesInfo` 래핑, vendorCode→vendor, 단일 머신도 배열 유지)
-- `GET /machine/channel/mainProgramPath?machine&channel` - 내부적으로 `data://machine/channel/currentProgram/mainFile/programNameWithPath`로 리라이트
-- `POST /machine/channel/mainProgramPath?machine&channel` + `{"value":"path"}` → `Api.CNCFileExecute`
-- `GET /machine/ncMemoryPath/content?machine&ncMemoryPath` - NC 텍스트 파일 내용을 JSON value로 반환
-- `POST /machine/ncMemoryPath/content?machine&ncMemoryPath` + `{"value":"text"}` - 업로드
-- `POST /machine/ncMemoryPath/exist?machine&ncMemoryPath` + `{"value":false}` - NC 파일 삭제
+### Custom (CustomController)
+- 합성 엔드포인트(`/health`, `/docs/help`, `/machineList`, `/machine/channel/mainProgramName`,
+  `/machine/channel/mainProgramPath`, `/machine/ncMemoryPath/*` 등)의 상세 사양은
+  `WebServer/CustomEndpoints.md`를 참조 (임베디드 리소스, `/docs/help` 및 Docs 창에 노출)
 
 ## 응답 공통 형식
 - 성공: `{"status":0, "value": ...}` 또는 `{"status":0}`

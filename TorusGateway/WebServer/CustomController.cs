@@ -369,6 +369,35 @@ namespace TorusGateway.WebServer
         // GET은 실제로 data://machine/channel/currentProgram/mainFile/programNameWithPath로 리라이트.
         // POST는 updateData로 안 되고 Api.CNCFileExecute를 거쳐야 해서 별도 처리.
 
+        // GET /machine/channel/mainProgramName?machine=N&channel=M
+        [HttpGet("/machine/channel/mainProgramName")]
+        public ActionResult<string> GetMainProgramName()
+        {
+            try
+            {
+                const string address = "data://machine/channel/currentProgram/mainFile/programName";
+                string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+
+                string getDataResult = Torus.Torus.Instance.GetData(address, filter);
+                return new ContentResult
+                {
+                    Content = TorusController.FilterStatusAndValue(getDataResult),
+                    ContentType = "application/json",
+                    StatusCode = 200
+                };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Main program name read failed");
+                return ErrorResponse(500, "Error occurred while reading main program name");
+            }
+        }
+
         // GET /machine/channel/mainProgramPath?machine=N&channel=M
         [HttpGet("/machine/channel/mainProgramPath")]
         public ActionResult<string> GetMainProgramPath()
