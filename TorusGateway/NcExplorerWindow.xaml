@@ -11,6 +11,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -35,17 +36,35 @@
         <TextBox Grid.Row="2" x:Name="TextBoxRootPath" FontFamily="Consolas"
                  IsReadOnly="True" Margin="0,0,0,10"/>
 
-        <!-- 파일/폴더 목록 영역: 목록 조회 API 연동 시 ListView로 교체 예정 -->
-        <Border Grid.Row="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
-            <TextBlock x:Name="TextBlockListingPlaceholder"
-                       Text="File / folder listing will appear here once the TORUS list API is integrated."
-                       Foreground="{StaticResource SecondaryTextBrush}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                       TextWrapping="Wrap" TextAlignment="Center" Margin="20"/>
-        </Border>
+        <!-- 네비게이션 바: Up 버튼 + 현재 경로 + 상태 -->
+        <Grid Grid.Row="3" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" x:Name="ButtonUp" Content="Up" Width="60"
+                    Click="ButtonUp_Click" IsEnabled="False"/>
+            <TextBox Grid.Column="1" x:Name="TextBoxCurrentPath" FontFamily="Consolas"
+                     IsReadOnly="True" Margin="8,0,0,0" VerticalContentAlignment="Center"/>
+            <TextBlock Grid.Column="2" x:Name="TextBlockStatus" VerticalAlignment="Center"
+                       Margin="8,0,0,0" Foreground="{StaticResource SecondaryTextBrush}"/>
+        </Grid>
+
+        <!-- 파일/폴더 목록 -->
+        <ListView Grid.Row="4" x:Name="ListViewEntries"
+                  MouseDoubleClick="ListViewEntries_MouseDoubleClick">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Name" Width="380" DisplayMemberBinding="{Binding DisplayName}"/>
+                    <GridViewColumn Header="Size" Width="120" DisplayMemberBinding="{Binding SizeDisplay}"/>
+                    <GridViewColumn Header="Modified" Width="200" DisplayMemberBinding="{Binding Modified}"/>
+                </GridView>
+            </ListView.View>
+        </ListView>
 
         <!-- 하단 Close -->
-        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button x:Name="ButtonClose" Content="Close" Width="80" Click="ButtonClose_Click"/>
         </StackPanel>
     </Grid>

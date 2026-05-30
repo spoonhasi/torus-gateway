@@ -633,11 +633,15 @@ namespace TorusGateway.WebServer
 
     }
 
-    // getFileListEx 응답 역직렬화용 모델. (TORUS 입력 키 기준 — path는 읽지만 응답엔 노출 안 함)
+    // getFileListEx 응답 역직렬화용 모델. (TORUS 입력 키 기준)
+    // Path는 폴더 진입 등 내부 네비게이션용으로 읽지만 HTTP 응답 투영에는 포함하지 않는다.
     internal class FileObject
     {
         [JsonPropertyName("name")]
         public string Name { get; set; } = "";
+
+        [JsonPropertyName("path")]
+        public string Path { get; set; } = "";
 
         [JsonPropertyName("size")]
         public long Size { get; set; }
