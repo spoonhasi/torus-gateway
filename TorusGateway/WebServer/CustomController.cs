@@ -97,18 +97,15 @@ namespace TorusGateway.WebServer
             return null;
         }
 
-        // GET /machine/ncMemoryPath/content?machine=1&ncMemoryPath=program/O0001.nc
-        // NC 파일 내용을 다운로드하여 JSON value로 반환
-        [HttpGet("/machine/ncMemoryPath/content")]
-        public ActionResult<string> GetNcFileContent()
+        // NC 파일을 임시 디렉토리로 내려받아 텍스트 내용을 읽어 반환한다.
+        // GET /content 와 NC 탐색기(다운로드)가 공유하는 핵심 로직. (HTTP/JSON 래핑은 호출부 담당)
+        // 반환: Status==0 && !NotFound 이면 Content 유효. Status!=0이면 TORUS 다운로드 실패.
+        // JsonException은 호출부에서 처리하도록 전파한다.
+        internal static NcTextDownloadResult DownloadNcFileText(int machineID, string ncPath)
         {
             string? tempDirectory = null;
             try
             {
-                var (machineID, ncPath) = ExtractNcMemoryPathParams();
-                var validationError = ValidateNcMemoryPathParams(machineID, ncPath);
-                if (validationError != null) return validationError;
-
                 string uniqueName = DateTime.Now.ToString("yyyyMMddHHmmssfff")
                                   + "_" + Guid.NewGuid().ToString("N").Substring(0, 8);
                 string absolutePath = ResolveTempPath(TempDirDownload + "/" + uniqueName);
@@ -119,19 +116,48 @@ namespace TorusGateway.WebServer
                 using var downloadDoc = JsonDocument.Parse(downloadResult);
                 int downloadStatus = downloadDoc.RootElement.GetProperty("status").GetInt32();
                 if (downloadStatus != 0)
-                    return TorusErrorResponse(downloadStatus);
+                    return new NcTextDownloadResult { Status = downloadStatus };
 
                 string fileName = ncPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries).Last();
                 string filePath = absolutePath + "/" + fileName;
                 if (!System.IO.File.Exists(filePath))
-                    return ErrorResponse(404, "File not found");
+                    return new NcTextDownloadResult { Status = 0, NotFound = true };
 
-                string content = System.IO.File.ReadAllText(filePath);
+                return new NcTextDownloadResult { Status = 0, Content = System.IO.File.ReadAllText(filePath) };
+            }
+            finally
+            {
+                if (tempDirectory != null)
+                {
+                    try { Directory.Delete(tempDirectory, true); }
+                    catch (Exception ex)
+                    {
+                        FileLogger.WriteWarn($"Temp dir cleanup failed: {tempDirectory} - {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        // GET /machine/ncMemoryPath/content?machine=1&ncMemoryPath=program/O0001.nc
+        // NC 파일 내용을 다운로드하여 JSON value로 반환
+        [HttpGet("/machine/ncMemoryPath/content")]
+        public ActionResult<string> GetNcFileContent()
+        {
+            try
+            {
+                var (machineID, ncPath) = ExtractNcMemoryPathParams();
+                var validationError = ValidateNcMemoryPathParams(machineID, ncPath);
+                if (validationError != null) return validationError;
+
+                var result = DownloadNcFileText(machineID, ncPath);
+                if (result.Status != 0) return TorusErrorResponse(result.Status);
+                if (result.NotFound) return ErrorResponse(404, "File not found");
+
                 var jsonOptions = new JsonSerializerOptions
                 {
                     Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
                 };
-                var response = JsonSerializer.Serialize(new { status = 0, value = content }, jsonOptions);
+                var response = JsonSerializer.Serialize(new { status = 0, value = result.Content }, jsonOptions);
                 return new ContentResult { Content = response, ContentType = "application/json", StatusCode = 200 };
             }
             catch (JsonException ex)
@@ -143,6 +169,30 @@ namespace TorusGateway.WebServer
             {
                 _logger.LogError(ex, "NC file content read failed");
                 return ErrorResponse(500, "Error occurred during NC file content read");
+            }
+        }
+
+        // 텍스트 내용을 임시 파일로 저장한 뒤 TORUS로 업로드한다.
+        // POST /content 와 NC 탐색기(업로드)가 공유하는 핵심 로직. content는 이미 실제 텍스트여야 한다.
+        // 반환: TORUS 업로드 status (0이면 성공). JsonException은 호출부에서 처리하도록 전파한다.
+        internal static int UploadNcFileText(int machineID, string ncPath, string content)
+        {
+            string? tempDirectory = null;
+            try
+            {
+                string uniqueName = DateTime.Now.ToString("yyyyMMddHHmmssfff")
+                                  + "_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+                string tempDir = ResolveTempPath(TempDirUpload + "/" + uniqueName);
+                tempDirectory = tempDir;
+                Directory.CreateDirectory(tempDir);
+
+                string fileName = ncPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries).Last();
+                string filePath = tempDir + "/" + fileName;
+                System.IO.File.WriteAllText(filePath, content);
+
+                string uploadResult = Torus.Torus.Instance.UploadFile(filePath, ncPath, machineID);
+                using var uploadDoc = JsonDocument.Parse(uploadResult);
+                return uploadDoc.RootElement.GetProperty("status").GetInt32();
             }
             finally
             {
@@ -162,7 +212,6 @@ namespace TorusGateway.WebServer
         [HttpPost("/machine/ncMemoryPath/content")]
         public async Task<ActionResult<string>> PostNcFileContent()
         {
-            string? tempDirectory = null;
             bool bodyParseDone = false;
             try
             {
@@ -193,24 +242,12 @@ namespace TorusGateway.WebServer
                                          .Replace("\\r", "\r")
                                          .Replace("\\t", "\t");
 
-                // 임시 파일에 저장 후 TORUS로 업로드
-                string uniqueName = DateTime.Now.ToString("yyyyMMddHHmmssfff")
-                                  + "_" + Guid.NewGuid().ToString("N").Substring(0, 8);
-                string tempDir = ResolveTempPath(TempDirUpload + "/" + uniqueName);
-                tempDirectory = tempDir;
-                Directory.CreateDirectory(tempDir);
-
-                string fileName = ncPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries).Last();
-                string filePath = tempDir + "/" + fileName;
-                await System.IO.File.WriteAllTextAsync(filePath, fileContent);
-
-                string uploadResult = Torus.Torus.Instance.UploadFile(filePath, ncPath, machineID);
-                using var uploadDoc = JsonDocument.Parse(uploadResult);
-                int uploadStatus = uploadDoc.RootElement.GetProperty("status").GetInt32();
+                int uploadStatus = UploadNcFileText(machineID, ncPath, fileContent);
                 if (uploadStatus != 0)
                     return TorusErrorResponse(uploadStatus);
 
-                return new ContentResult { Content = uploadResult, ContentType = "application/json", StatusCode = 200 };
+                var response = JsonSerializer.Serialize(new { status = 0 }, TorusController.JsonSerOptions);
+                return new ContentResult { Content = response, ContentType = "application/json", StatusCode = 200 };
             }
             catch (JsonException ex)
             {
@@ -226,17 +263,6 @@ namespace TorusGateway.WebServer
             {
                 _logger.LogError(ex, "NC file content write failed");
                 return ErrorResponse(500, "Error occurred during NC file content write");
-            }
-            finally
-            {
-                if (tempDirectory != null)
-                {
-                    try { Directory.Delete(tempDirectory, true); }
-                    catch (Exception ex)
-                    {
-                        FileLogger.WriteWarn($"Temp dir cleanup failed: {tempDirectory} - {ex.Message}");
-                    }
-                }
             }
         }
 
@@ -668,15 +694,11 @@ namespace TorusGateway.WebServer
 
     }
 
-    // getFileListEx 응답 역직렬화용 모델. (TORUS 입력 키 기준)
-    // Path는 폴더 진입 등 내부 네비게이션용으로 읽지만 HTTP 응답 투영에는 포함하지 않는다.
+    // getFileListEx 응답 역직렬화용 모델. (TORUS 입력 키 기준 — path는 응답/탐색에 미사용)
     internal class FileObject
     {
         [JsonPropertyName("name")]
         public string Name { get; set; } = "";
-
-        [JsonPropertyName("path")]
-        public string Path { get; set; } = "";
 
         [JsonPropertyName("size")]
         public long Size { get; set; }
@@ -692,5 +714,13 @@ namespace TorusGateway.WebServer
     {
         [JsonPropertyName("value")]
         public List<FileObject> Value { get; set; } = new();
+    }
+
+    // DownloadNcFileText 결과. Status==0 이고 NotFound==false 이면 Content 유효.
+    internal sealed class NcTextDownloadResult
+    {
+        public int Status { get; init; }
+        public bool NotFound { get; init; }
+        public string Content { get; init; } = "";
     }
 }

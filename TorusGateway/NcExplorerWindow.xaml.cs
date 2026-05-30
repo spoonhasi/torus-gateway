@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
@@ -9,11 +10,12 @@ using TorusGateway.WebServer;
 
 namespace TorusGateway
 {
-    // TORUS NC 파일 탐색기 (읽기 전용).
+    // TORUS NC 파일 탐색기.
     // 연결된 설비 목록을 콤보박스로 제공하고, 설비 선택 시 NC 메모리 루트 경로를 조회한 뒤
-    // 해당 경로의 파일/폴더 목록을 보여준다. 폴더 더블클릭으로 진입, Up 버튼으로 상위 복귀.
-    // 웹서버 Open 여부와 무관하게 동작해야 하므로 HTTP 대신 Torus 싱글턴을 직접 호출하고,
-    // REST 응답과 동일한 포맷/모델(TorusController, WebServer.FilesObject)을 재사용한다.
+    // 해당 경로의 파일/폴더 목록을 보여준다. 폴더 더블클릭으로 진입, "..."으로 상위 복귀.
+    // 선택한 파일은 Download(로컬 저장), 현재 폴더로 Upload(로컬 파일 올리기) 가능.
+    // 웹서버 Open 여부와 무관하게 동작해야 하므로 HTTP를 거치지 않고, content 엔드포인트의
+    // 핵심 로직(CustomController.DownloadNcFileText/UploadNcFileText)을 직접 재사용한다.
     // 네이티브 API 호출은 블로킹될 수 있어 Task.Run으로 UI 스레드를 막지 않는다.
     public partial class NcExplorerWindow : Window
     {
@@ -146,6 +148,7 @@ namespace TorusGateway
             {
                 _machineId = -1;
                 TextBoxRootPath.Text = "";
+                UpdateButtons();
                 return;
             }
 
@@ -204,6 +207,7 @@ namespace TorusGateway
             _currentPath = path;
             TextBoxCurrentPath.Text = path;
             await ListDirectoryAsync(path);
+            UpdateButtons();
         }
 
         // getFileListEx 래퍼(Torus.GetFileList) 호출 → 폴더 우선 정렬 → ListView 갱신.
@@ -286,11 +290,113 @@ namespace TorusGateway
             await EnterDirectoryAsync(childPath);
         }
 
+        // 선택 변경 시 Download 버튼 상태 갱신.
+        private void ListViewEntries_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateButtons();
+        }
+
+        // 선택한 파일을 로컬로 다운로드. content 엔드포인트와 동일 경로(임시 디렉토리 경유)로 내용을 읽어 저장.
+        private async void ButtonDownload_Click(object sender, RoutedEventArgs e)
+        {
+            if (_busy || _machineId < 1) return;
+            if (ListViewEntries.SelectedItem is not EntryItem item || item.IsParent || item.IsDir) return;
+
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save NC file",
+                FileName = item.Name,
+                Filter = "All Files (*.*)|*.*"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            string ncPath = _currentPath.TrimEnd('/') + "/" + item.Name;
+            string localPath = dlg.FileName;
+            SetBusy(true);
+            TextBlockStatus.Text = "Downloading...";
+            try
+            {
+                var result = await Task.Run(() => CustomController.DownloadNcFileText(_machineId, ncPath));
+                if (result.Status != 0)
+                {
+                    TextBlockStatus.Text = $"[status {result.Status}] {TorusStatusCodes.GetDescription(result.Status)}";
+                    return;
+                }
+                if (result.NotFound)
+                {
+                    TextBlockStatus.Text = "Download failed: file not found";
+                    return;
+                }
+                await File.WriteAllTextAsync(localPath, result.Content);
+                TextBlockStatus.Text = $"Downloaded: {item.Name}";
+            }
+            catch (Exception ex)
+            {
+                TextBlockStatus.Text = $"Download failed: {ex.Message}";
+                MessageBox.Show($"Download failed: {ex.Message}", "Error");
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+        }
+
+        // 로컬 파일을 현재 폴더로 업로드. content 엔드포인트와 동일 경로로 내용을 올린다.
+        private async void ButtonUpload_Click(object sender, RoutedEventArgs e)
+        {
+            if (_busy || _machineId < 1 || string.IsNullOrEmpty(_currentPath)) return;
+
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select a file to upload",
+                Filter = "All Files (*.*)|*.*"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            string localPath = dlg.FileName;
+            string fileName = Path.GetFileName(localPath);
+            string ncPath = _currentPath.TrimEnd('/') + "/" + fileName;
+            SetBusy(true);
+            TextBlockStatus.Text = "Uploading...";
+            try
+            {
+                string content = await File.ReadAllTextAsync(localPath);
+                int status = await Task.Run(() => CustomController.UploadNcFileText(_machineId, ncPath, content));
+                if (status != 0)
+                {
+                    TextBlockStatus.Text = $"[status {status}] {TorusStatusCodes.GetDescription(status)}";
+                    return;
+                }
+                TextBlockStatus.Text = $"Uploaded: {fileName}";
+                await ListDirectoryAsync(_currentPath); // 목록 갱신
+            }
+            catch (Exception ex)
+            {
+                TextBlockStatus.Text = $"Upload failed: {ex.Message}";
+                MessageBox.Show($"Upload failed: {ex.Message}", "Error");
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+        }
+
         private void SetBusy(bool busy)
         {
             _busy = busy;
             ComboMachine.IsEnabled = !busy;
             ListViewEntries.IsEnabled = !busy;
+            UpdateButtons();
+        }
+
+        // Download: 파일(폴더/"..." 아님) 선택 시. Upload: 설비 선택+현재 경로 존재 시. 작업 중엔 모두 비활성.
+        private void UpdateButtons()
+        {
+            if (ButtonDownload == null || ButtonUpload == null) return;
+            bool active = !_busy && _machineId >= 1 && !string.IsNullOrEmpty(_currentPath);
+            ButtonUpload.IsEnabled = active;
+            ButtonDownload.IsEnabled = active
+                && ListViewEntries.SelectedItem is EntryItem item && !item.IsParent && !item.IsDir;
         }
 
         private void ButtonClose_Click(object sender, RoutedEventArgs e) => Close();
