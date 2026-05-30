@@ -28,7 +28,6 @@ namespace TorusGateway
         private sealed class EntryItem
         {
             public string Name { get; init; } = "";
-            public string Path { get; init; } = "";
             public bool IsDir { get; init; }
             public long Size { get; init; }
             public string Modified { get; init; } = "";
@@ -235,7 +234,6 @@ namespace TorusGateway
                     .Select(f => new EntryItem
                     {
                         Name = f.Name.TrimEnd('/'),
-                        Path = f.Path,
                         IsDir = f.IsDir,
                         Size = f.Size,
                         Modified = f.Datetime
@@ -264,10 +262,12 @@ namespace TorusGateway
         {
             if (_busy) return;
             if (ListViewEntries.SelectedItem is not EntryItem item) return;
-            if (!item.IsDir || string.IsNullOrEmpty(item.Path)) return;
+            if (!item.IsDir) return;
 
+            // TORUS 목록 응답엔 진입 가능한 절대 경로가 없으므로 현재 경로에 폴더 이름을 이어붙인다.
+            string childPath = _currentPath.TrimEnd('/') + "/" + item.Name;
             _pathStack.Push(_currentPath);
-            await EnterDirectoryAsync(item.Path);
+            await EnterDirectoryAsync(childPath);
         }
 
         // 상위 디렉토리로 복귀 (방문 스택 pop).
