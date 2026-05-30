@@ -84,7 +84,8 @@ namespace TorusGateway.WebServer
             foreach (var param in HttpContext.Request.Query)
             {
                 if (param.Key == "machine") _ = int.TryParse(param.Value, out machineID);
-                else if (param.Key == "ncMemoryPath") ncPath = param.Value.ToString() ?? "";
+                // 경로 구분자는 '/'로 통일 (클라이언트가 '\'로 보내도 허용).
+                else if (param.Key == "ncMemoryPath") ncPath = (param.Value.ToString() ?? "").Replace('\\', '/');
             }
             return (machineID, ncPath);
         }
@@ -664,6 +665,9 @@ namespace TorusGateway.WebServer
                     ncFilePath = valueProp[0].GetString() ?? "";
                 else
                     ncFilePath = valueProp.GetString() ?? "";
+
+                // 경로 구분자는 '/'로 통일 (클라이언트가 '\'로 보내도 허용).
+                ncFilePath = ncFilePath.Replace('\\', '/');
 
                 if (string.IsNullOrWhiteSpace(ncFilePath))
                     return ErrorResponse(400, "'value' must be a non-empty NC file path");
