@@ -41,6 +41,7 @@ namespace TorusGateway
             InitializeComponent();
             ButtonWebServerOpen.IsEnabled = false;
             ButtonWebServerClose.IsEnabled = false;
+            ButtonNcExplorer.IsEnabled = false; // TORUS 연결 성공 시에만 활성화
 
             // 이전 세션의 비정상 종료로 남은 임시 파일 디렉토리 정리.
             CustomController.CleanupOrphanedTempDirs();
@@ -375,6 +376,7 @@ namespace TorusGateway
                 {
                     ButtonTorusConnect.Content = "Connected";
                     ButtonWebServerOpen.IsEnabled = true;
+                    ButtonNcExplorer.IsEnabled = true; // 연결 후 NC 탐색기 사용 가능
                 }
                 else
                 {
@@ -431,6 +433,13 @@ namespace TorusGateway
                 { Owner = this };
                 _modalDepth++;
                 try { testWindow.ShowDialog(); }
+                finally { _modalDepth--; }
+            }
+            else if (sender == ButtonNcExplorer)//NC 파일 탐색기 모달 창 열기
+            {
+                var explorerWindow = new NcExplorerWindow { Owner = this };
+                _modalDepth++;
+                try { explorerWindow.ShowDialog(); }
                 finally { _modalDepth--; }
             }
             else if (sender == ButtonTorusSetting)//TORUS 설정 모달 창 열기

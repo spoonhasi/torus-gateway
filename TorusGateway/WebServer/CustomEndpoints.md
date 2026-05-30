@@ -135,6 +135,55 @@ The array form `{ "value": ["program/O0001.nc"] }` is also accepted.
 
 ---
 
+## `GET /machine/ncMemoryRootPath`
+
+지정한 머신의 NC 메모리 루트 경로 조회.
+Reads the NC memory root path of the specified machine.
+
+내부적으로 `data://machine/ncMemory/rootPath`를 사용합니다.
+Internally uses `data://machine/ncMemory/rootPath`.
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+
+**Response example:**
+```json
+{ "status": 0, "value": "//NC/MPF.DIR" }
+```
+
+---
+
+## `GET /machine/ncMemoryPath/directory`
+
+지정한 NC 메모리 경로 하위의 파일/폴더 목록 조회. `Api.getFileListEx` 래핑.
+Lists files and folders under the given NC memory path. Wraps `Api.getFileListEx`.
+
+정렬은 폴더 우선 → 이름 오름차순입니다. 루트 목록을 보려면 먼저 `GET /machine/ncMemoryRootPath`로 루트 경로를 얻으세요.
+Sorted folders-first, then by name ascending. To list the root, first obtain the root path via `GET /machine/ncMemoryRootPath`.
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `ncMemoryPath` (string, required): 조회할 디렉토리 경로 / directory path to list. 예 / e.g.: `program`, `//NC/MPF.DIR`
+
+**Response fields (per item) / 항목별 필드:**
+- `name` (string): 파일/폴더 이름 / file or folder name
+- `sizeBytes` (int): 바이트 단위 크기 / size in bytes
+- `modifiedAt` (string): 수정 시각 (TORUS 원본 형식) / last modified time (TORUS raw format)
+- `isDir` (bool): 폴더 여부 / whether the entry is a directory
+
+**Response example:**
+```json
+{
+  "status": 0,
+  "value": [
+    { "name": "subDir", "sizeBytes": 0, "modifiedAt": "2026-05-30 09:12:00", "isDir": true },
+    { "name": "O0001.nc", "sizeBytes": 1234, "modifiedAt": "2026-05-29 14:23:00", "isDir": false }
+  ]
+}
+```
+
+---
+
 ## `GET /machine/ncMemoryPath/content`
 
 NC 메모리상의 텍스트 파일 내용을 JSON `value`로 반환.

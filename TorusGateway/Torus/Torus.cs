@@ -19,6 +19,9 @@ namespace TorusGateway.Torus
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
 
+        // getFileListEx 타임아웃. TORUS API 타임아웃 단위는 ms로 가정 (네이티브 매뉴얼 기준).
+        private const int FileListTimeoutMs = 10000;
+
         public string AppName { get; private set; }
         public Guid AppGuid { get; private set; }
         private int _connectStatus = -1;
@@ -146,6 +149,20 @@ namespace TorusGateway.Torus
                     return JsonSerializer.Serialize(new { status = result });
 
                 return InjectStatus(item.ToString(), result);
+            }
+        }
+
+        // NC 메모리 경로 하위의 파일/폴더 목록 조회. 확장 정보(size/datetime/isDir 포함)인 getFileListEx 사용.
+        // getMachinesInfo처럼 응답 JSON에 status가 없을 수 있어 InjectStatus로 주입한다.
+        public string GetFileList(string ncPath, int machineID)
+        {
+            lock (_apiLock)
+            {
+                int result = Api.getFileListEx(ncPath, out Item item, machineID, FileListTimeoutMs);
+                if (item == null)
+                    return JsonSerializer.Serialize(new { status = result });
+
+                return InjectStatus(item.ToString() ?? string.Empty, result);
             }
         }
 

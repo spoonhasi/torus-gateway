@@ -22,6 +22,7 @@
                     <Button x:Name="ButtonTorusSetting" Content="TORUS Settings" Width="120" Margin="5,0,0,0" Click="Button_Click"/>
                     <Button x:Name="ButtonDocs" Content="Docs" Width="60" Margin="5,0,0,0" Click="Button_Click"/>
                     <Button x:Name="ButtonTestRequest" Content="Test Request" Width="100" Margin="5,0,0,0" Click="Button_Click"/>
+                    <Button x:Name="ButtonNcExplorer" Content="NC Explorer" Width="100" Margin="5,0,0,0" Click="Button_Click"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                     <Button x:Name="ButtonWebServerOpen" Content="WebServer Open" Width="120" Click="Button_Click"/>

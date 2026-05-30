@@ -3,8 +3,10 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace TorusGateway.WebServer
@@ -369,6 +371,89 @@ namespace TorusGateway.WebServer
         // GET은 실제로 data://machine/channel/currentProgram/mainFile/programNameWithPath로 리라이트.
         // POST는 updateData로 안 되고 Api.CNCFileExecute를 거쳐야 해서 별도 처리.
 
+        // GET /machine/ncMemoryPath/directory?machine=1&ncMemoryPath=program
+        // 지정한 NC 메모리 경로 하위의 파일/폴더 목록 반환. Api.getFileListEx 래핑.
+        // 정렬: 폴더 우선 → 이름 오름차순. 각 항목은 name/path/size/datetime/isDir.
+        [HttpGet("/machine/ncMemoryPath/directory")]
+        public ActionResult<string> GetNcMemoryPathDirectory()
+        {
+            try
+            {
+                var (machineID, ncPath) = ExtractNcMemoryPathParams();
+                var validationError = ValidateNcMemoryPathParams(machineID, ncPath);
+                if (validationError != null) return validationError;
+
+                string listResult = Torus.Torus.Instance.GetFileList(ncPath, machineID);
+
+                // TORUS 호출 status 확인. 0이 아니면 매핑된 오류로 반환.
+                using (var statusDoc = JsonDocument.Parse(listResult))
+                {
+                    int status = statusDoc.RootElement.TryGetProperty("status", out var st)
+                                 && st.ValueKind == JsonValueKind.Number && st.TryGetInt32(out int code)
+                                 ? code : -1;
+                    if (status != 0)
+                        return TorusErrorResponse(status);
+                }
+
+                var files = JsonSerializer.Deserialize<FilesObject>(listResult);
+                // 폴더 우선 → 이름 오름차순. 출력 키는 sizeBytes/modifiedAt으로 리네임하고 path는 노출하지 않음.
+                var sorted = (files?.Value ?? new List<FileObject>())
+                    .Where(f => f is not null)
+                    .OrderByDescending(f => f.IsDir)
+                    .ThenBy(f => f.Name)
+                    .Select(f => new
+                    {
+                        name = f.Name,
+                        sizeBytes = f.Size,
+                        modifiedAt = f.Datetime,
+                        isDir = f.IsDir
+                    })
+                    .ToList();
+
+                string body = JsonSerializer.Serialize(new { status = 0, value = sorted }, TorusController.JsonSerOptions);
+                return new ContentResult { Content = body, ContentType = "application/json", StatusCode = 200 };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "NC directory list failed");
+                return ErrorResponse(500, "Error occurred while listing NC directory");
+            }
+        }
+
+        // GET /machine/ncMemoryRootPath?machine=N
+        [HttpGet("/machine/ncMemoryRootPath")]
+        public ActionResult<string> GetNcMemoryRootPath()
+        {
+            try
+            {
+                const string address = "data://machine/ncMemory/rootPath";
+                string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+
+                string getDataResult = Torus.Torus.Instance.GetData(address, filter);
+                return new ContentResult
+                {
+                    Content = TorusController.FilterStatusAndValue(getDataResult),
+                    ContentType = "application/json",
+                    StatusCode = 200
+                };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "NC root path read failed");
+                return ErrorResponse(500, "Error occurred while reading NC root path");
+            }
+        }
+
         // GET /machine/channel/mainProgramName?machine=N&channel=M
         [HttpGet("/machine/channel/mainProgramName")]
         public ActionResult<string> GetMainProgramName()
@@ -545,5 +630,28 @@ namespace TorusGateway.WebServer
                 return ErrorResponse(500, "Error occurred while deleting NC file");
             }
         }
+
+    }
+
+    // getFileListEx 응답 역직렬화용 모델. (TORUS 입력 키 기준 — path는 읽지만 응답엔 노출 안 함)
+    internal class FileObject
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("size")]
+        public long Size { get; set; }
+
+        [JsonPropertyName("datetime")]
+        public string Datetime { get; set; } = "";
+
+        [JsonPropertyName("isDir")]
+        public bool IsDir { get; set; }
+    }
+
+    internal class FilesObject
+    {
+        [JsonPropertyName("value")]
+        public List<FileObject> Value { get; set; } = new();
     }
 }
