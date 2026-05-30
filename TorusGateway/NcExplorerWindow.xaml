@@ -36,22 +36,19 @@
         <TextBox Grid.Row="2" x:Name="TextBoxRootPath" FontFamily="Consolas"
                  IsReadOnly="True" Margin="0,0,0,10"/>
 
-        <!-- 네비게이션 바: Up 버튼 + 현재 경로 + 상태 -->
+        <!-- 네비게이션 바: 현재 경로 + 상태 (상위 이동은 목록 첫 항목 "..." 사용) -->
         <Grid Grid.Row="3" Margin="0,0,0,6">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" x:Name="ButtonUp" Content="Up" Width="60"
-                    Click="ButtonUp_Click" IsEnabled="False"/>
-            <TextBox Grid.Column="1" x:Name="TextBoxCurrentPath" FontFamily="Consolas"
-                     IsReadOnly="True" Margin="8,0,0,0" VerticalContentAlignment="Center"/>
-            <TextBlock Grid.Column="2" x:Name="TextBlockStatus" VerticalAlignment="Center"
+            <TextBox Grid.Column="0" x:Name="TextBoxCurrentPath" FontFamily="Consolas"
+                     IsReadOnly="True" VerticalContentAlignment="Center"/>
+            <TextBlock Grid.Column="1" x:Name="TextBlockStatus" VerticalAlignment="Center"
                        Margin="8,0,0,0" Foreground="{StaticResource SecondaryTextBrush}"/>
         </Grid>
 
-        <!-- 파일/폴더 목록 -->
+        <!-- 파일/폴더 목록 (첫 항목 "..."은 상위 폴더로 이동) -->
         <ListView Grid.Row="4" x:Name="ListViewEntries"
                   MouseDoubleClick="ListViewEntries_MouseDoubleClick">
             <ListView.View>

@@ -31,12 +31,17 @@ namespace TorusGateway
             public bool IsDir { get; init; }
             public long Size { get; init; }
             public string Modified { get; init; } = "";
+            // 상위 폴더 이동용 가상 항목("..."). 실제 폴더가 아니라 네비게이션 전용.
+            public bool IsParent { get; init; }
 
-            // 폴더/파일 아이콘 + 이름
-            public string DisplayName => (IsDir ? "\U0001F4C1 " : "\U0001F4C4 ") + Name;
-            // 폴더는 크기를 비우고, 파일은 천 단위 구분 + " B"
-            public string SizeDisplay => IsDir ? "" : Size.ToString("N0") + " B";
+            // 폴더/파일 아이콘 + 이름 (상위 이동 항목은 아이콘 없이 이름만)
+            public string DisplayName => IsParent ? Name : (IsDir ? "\U0001F4C1 " : "\U0001F4C4 ") + Name;
+            // 상위 이동/폴더는 크기를 비우고, 파일은 천 단위 구분 + " B"
+            public string SizeDisplay => (IsParent || IsDir) ? "" : Size.ToString("N0") + " B";
         }
+
+        // 상위 폴더 이동용 목록 항목 표기.
+        private const string ParentEntryName = "...";
 
         private readonly ObservableCollection<MachineItem> _machines = new();
         private readonly ObservableCollection<EntryItem> _entries = new();
@@ -136,7 +141,6 @@ namespace TorusGateway
             _currentPath = "";
             TextBoxCurrentPath.Text = "";
             TextBlockStatus.Text = "";
-            UpdateUpButton();
 
             if (ComboMachine.SelectedItem is not MachineItem m || m.Id < 1)
             {
@@ -199,7 +203,6 @@ namespace TorusGateway
         {
             _currentPath = path;
             TextBoxCurrentPath.Text = path;
-            UpdateUpButton();
             await ListDirectoryAsync(path);
         }
 
@@ -237,13 +240,17 @@ namespace TorusGateway
                         IsDir = f.IsDir,
                         Size = f.Size,
                         Modified = f.Datetime
-                    });
+                    })
+                    .ToList();
 
                 _entries.Clear();
+                // 루트가 아니면(상위 경로가 있으면) 첫 항목에 "..." 추가.
+                if (_pathStack.Count > 0)
+                    _entries.Add(new EntryItem { Name = ParentEntryName, IsDir = true, IsParent = true });
                 foreach (var it in items) _entries.Add(it);
 
-                int dirs = _entries.Count(e => e.IsDir);
-                int fileCount = _entries.Count - dirs;
+                int dirs = items.Count(e => e.IsDir);
+                int fileCount = items.Count - dirs;
                 TextBlockStatus.Text = $"{dirs} folders, {fileCount} files";
             }
             catch (Exception ex)
@@ -257,11 +264,20 @@ namespace TorusGateway
             }
         }
 
-        // 폴더 더블클릭 시 진입. 파일은 읽기 전용 1단계에선 동작 없음.
+        // 항목 더블클릭. "..."은 상위로 복귀(방문 스택 pop), 폴더는 진입, 파일은 동작 없음.
         private async void ListViewEntries_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
             if (_busy) return;
             if (ListViewEntries.SelectedItem is not EntryItem item) return;
+
+            if (item.IsParent)
+            {
+                if (_pathStack.Count == 0) return;
+                string parent = _pathStack.Pop();
+                await EnterDirectoryAsync(parent);
+                return;
+            }
+
             if (!item.IsDir) return;
 
             // TORUS 목록 응답엔 진입 가능한 절대 경로가 없으므로 현재 경로에 폴더 이름을 이어붙인다.
@@ -270,26 +286,11 @@ namespace TorusGateway
             await EnterDirectoryAsync(childPath);
         }
 
-        // 상위 디렉토리로 복귀 (방문 스택 pop).
-        private async void ButtonUp_Click(object sender, RoutedEventArgs e)
-        {
-            if (_busy || _pathStack.Count == 0) return;
-            string parent = _pathStack.Pop();
-            await EnterDirectoryAsync(parent);
-        }
-
         private void SetBusy(bool busy)
         {
             _busy = busy;
             ComboMachine.IsEnabled = !busy;
             ListViewEntries.IsEnabled = !busy;
-            UpdateUpButton();
-        }
-
-        private void UpdateUpButton()
-        {
-            if (ButtonUp == null) return;
-            ButtonUp.IsEnabled = !_busy && _pathStack.Count > 0;
         }
 
         private void ButtonClose_Click(object sender, RoutedEventArgs e) => Close();
