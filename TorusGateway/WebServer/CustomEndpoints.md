@@ -187,6 +187,30 @@ Sorted folders-first, then by name ascending. To list the root, first obtain the
 
 ---
 
+## `POST /machine/ncMemoryPath/directory`
+
+지정한 경로에 새 폴더를 생성. `Api.CreateCNCFolder` 래핑.
+Creates a new folder at the given path. Wraps `Api.CreateCNCFolder`.
+
+`ncMemoryPath`의 마지막 세그먼트가 만들 폴더 이름이고, 나머지가 부모 경로입니다.
+The last segment of `ncMemoryPath` is the new folder name; the rest is the parent path.
+예 / e.g.: `program/newDir` → 부모 `program`에 `newDir` 생성 / creates `newDir` under `program`.
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `ncMemoryPath` (string, required): 부모 경로 + 새 폴더 이름 / parent path + new folder name
+
+**Body:**
+```json
+{ "value": [] }
+```
+body는 형식(JSON)만 확인하며 내용은 사용하지 않습니다.
+The body is only validated as JSON; its content is not used.
+
+**Response:** `{ "status": 0 }`
+
+---
+
 ## `GET /machine/ncMemoryPath/content`
 
 NC 메모리상의 텍스트 파일 내용을 JSON `value`로 반환.

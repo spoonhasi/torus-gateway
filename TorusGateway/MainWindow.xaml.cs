@@ -41,7 +41,7 @@ namespace TorusGateway
             InitializeComponent();
             ButtonWebServerOpen.IsEnabled = false;
             ButtonWebServerClose.IsEnabled = false;
-            ButtonNcExplorer.IsEnabled = false; // TORUS 연결 성공 시에만 활성화
+            ButtonNcExplorer.IsEnabled = false; // 웹서버 Open 시에만 활성화 (모든 기능이 HTTP 경유)
 
             // 이전 세션의 비정상 종료로 남은 임시 파일 디렉토리 정리.
             CustomController.CleanupOrphanedTempDirs();
@@ -351,6 +351,7 @@ namespace TorusGateway
                 _webServer = null;
                 ButtonWebServerOpen.IsEnabled = true;
                 ButtonWebServerClose.IsEnabled = false;
+                ButtonNcExplorer.IsEnabled = false; // 웹서버 종료 시 탐색기도 비활성화
                 TextBoxWebServerHost.IsReadOnly = false;
                 TextBoxWebServerPort.IsReadOnly = false;
             }
@@ -376,7 +377,6 @@ namespace TorusGateway
                 {
                     ButtonTorusConnect.Content = "Connected";
                     ButtonWebServerOpen.IsEnabled = true;
-                    ButtonNcExplorer.IsEnabled = true; // 연결 후 NC 탐색기 사용 가능
                 }
                 else
                 {
@@ -412,6 +412,7 @@ namespace TorusGateway
                 SaveServerSettings(); // 개통 성공 시에만 config.ini에 영구 저장
                 ButtonWebServerOpen.IsEnabled = false;
                 ButtonWebServerClose.IsEnabled = true;
+                ButtonNcExplorer.IsEnabled = true; // 웹서버 가동 중에만 NC 탐색기 사용 가능 (HTTP 경유)
                 TextBoxWebServerHost.IsReadOnly = true;
                 TextBoxWebServerPort.IsReadOnly = true;
             }
@@ -435,9 +436,10 @@ namespace TorusGateway
                 try { testWindow.ShowDialog(); }
                 finally { _modalDepth--; }
             }
-            else if (sender == ButtonNcExplorer)//NC 파일 탐색기 모달 창 열기
+            else if (sender == ButtonNcExplorer)//NC 파일 탐색기 모달 창 열기 (HTTP 경유, Host/Port 전달)
             {
-                var explorerWindow = new NcExplorerWindow { Owner = this };
+                var explorerWindow = new NcExplorerWindow(TextBoxWebServerHost.Text, TextBoxWebServerPort.Text)
+                { Owner = this };
                 _modalDepth++;
                 try { explorerWindow.ShowDialog(); }
                 finally { _modalDepth--; }

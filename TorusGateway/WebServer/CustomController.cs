@@ -485,6 +485,65 @@ namespace TorusGateway.WebServer
             }
         }
 
+        // POST /machine/ncMemoryPath/directory?machine=1&ncMemoryPath=program/subDir
+        // body: {"value": []}  (입력만 받음 — 내용 무시)
+        // ncMemoryPath의 마지막 세그먼트를 폴더 이름으로, 나머지를 부모 경로로 분리해 폴더 생성.
+        // Api.CreateCNCFolder(parentPath, name, ...) 래핑.
+        [HttpPost("/machine/ncMemoryPath/directory")]
+        public async Task<ActionResult<string>> PostNcMemoryPathDirectory()
+        {
+            bool bodyParseDone = false;
+            try
+            {
+                var (machineID, ncPath) = ExtractNcMemoryPathParams();
+                var validationError = ValidateNcMemoryPathParams(machineID, ncPath);
+                if (validationError != null) return validationError;
+
+                // body는 형식만 확인(빈 배열/객체 등 무엇이든 허용). JSON이 아니면 400.
+                using var reader = new StreamReader(Request.Body);
+                string rawBody = await reader.ReadToEndAsync();
+                if (!string.IsNullOrWhiteSpace(rawBody))
+                {
+                    using var _ = JsonDocument.Parse(rawBody);
+                }
+                bodyParseDone = true;
+
+                // ncMemoryPath를 부모 경로 + 폴더 이름으로 분리. 끝의 '/'는 무시.
+                string trimmed = ncPath.TrimEnd('/');
+                int lastSep = trimmed.LastIndexOfAny(new[] { '/', '\\' });
+                if (lastSep < 0)
+                    return ErrorResponse(400, "'ncMemoryPath' must include a parent path and a folder name");
+                string parentPath = trimmed.Substring(0, lastSep);
+                string folderName = trimmed.Substring(lastSep + 1);
+                if (string.IsNullOrWhiteSpace(parentPath) || string.IsNullOrWhiteSpace(folderName))
+                    return ErrorResponse(400, "'ncMemoryPath' must include a parent path and a folder name");
+
+                string createResult = Torus.Torus.Instance.CreateFolder(parentPath, folderName, machineID);
+                using var resultDoc = JsonDocument.Parse(createResult);
+                int createStatus = resultDoc.RootElement.GetProperty("status").GetInt32();
+                if (createStatus != 0)
+                    return TorusErrorResponse(createStatus);
+
+                var response = JsonSerializer.Serialize(new { status = 0 }, TorusController.JsonSerOptions);
+                return new ContentResult { Content = response, ContentType = "application/json", StatusCode = 200 };
+            }
+            catch (JsonException ex)
+            {
+                if (!bodyParseDone)
+                {
+                    _logger.LogWarning(ex, "Invalid JSON in request body");
+                    return ErrorResponse(400, "Invalid JSON in request body");
+                }
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "NC folder creation failed");
+                return ErrorResponse(500, "Error occurred while creating NC folder");
+            }
+        }
+
         // GET /machine/ncMemoryRootPath?machine=N
         [HttpGet("/machine/ncMemoryRootPath")]
         public ActionResult<string> GetNcMemoryRootPath()

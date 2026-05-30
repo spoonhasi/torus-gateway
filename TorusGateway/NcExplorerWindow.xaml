@@ -70,6 +70,12 @@
                 <Button x:Name="ButtonUpload" Content="Upload" Width="90" Margin="8,0,0,0"
                         Click="ButtonUpload_Click" IsEnabled="False"
                         ToolTip="Upload a file from your PC to the current folder"/>
+                <Button x:Name="ButtonNewFolder" Content="New Folder" Width="90" Margin="8,0,0,0"
+                        Click="ButtonNewFolder_Click" IsEnabled="False"
+                        ToolTip="Create a new folder under the current folder"/>
+                <Button x:Name="ButtonDelete" Content="Delete" Width="90" Margin="8,0,0,0"
+                        Click="ButtonDelete_Click" IsEnabled="False"
+                        ToolTip="Delete the selected file from the machine"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button x:Name="ButtonClose" Content="Close" Width="80" Click="ButtonClose_Click"/>

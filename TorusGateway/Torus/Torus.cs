@@ -140,6 +140,16 @@ namespace TorusGateway.Torus
             }
         }
 
+        // 지정한 부모 경로 아래에 폴더를 생성한다. CreateCNCFolder(parentpath, name, ...) 오버로드 사용.
+        public string CreateFolder(string parentPath, string name, int machineID)
+        {
+            lock (_apiLock)
+            {
+                int result = Api.CreateCNCFolder(parentPath, name, out Item _, machineID, FileListTimeoutMs);
+                return JsonSerializer.Serialize(new { status = result });
+            }
+        }
+
         public string GetMachinesInfo()
         {
             lock (_apiLock)
