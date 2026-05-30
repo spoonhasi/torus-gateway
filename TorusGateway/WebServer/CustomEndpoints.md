@@ -146,6 +146,9 @@ Internally uses `data://machine/ncMemory/rootPath`.
 **Query parameters:**
 - `machine` (int, required): 머신 ID / machine ID
 
+경로 끝의 `/`는 제거되어 반환됩니다 (예: `//NC/MPF.DIR/` → `//NC/MPF.DIR`).
+Any trailing `/` is stripped from the returned path (e.g. `//NC/MPF.DIR/` → `//NC/MPF.DIR`).
+
 **Response example:**
 ```json
 { "status": 0, "value": "//NC/MPF.DIR" }
@@ -166,7 +169,7 @@ Sorted folders-first, then by name ascending. To list the root, first obtain the
 - `ncMemoryPath` (string, required): 조회할 디렉토리 경로 / directory path to list. 예 / e.g.: `program`, `//NC/MPF.DIR`
 
 **Response fields (per item) / 항목별 필드:**
-- `name` (string): 파일/폴더 이름 / file or folder name
+- `name` (string): 파일/폴더 이름 (끝의 `/`는 제거됨) / file or folder name (trailing `/` stripped)
 - `sizeBytes` (int): 바이트 단위 크기 / size in bytes
 - `modifiedAt` (string): 수정 시각 (TORUS 원본 형식) / last modified time (TORUS raw format)
 - `isDir` (bool): 폴더 여부 / whether the entry is a directory

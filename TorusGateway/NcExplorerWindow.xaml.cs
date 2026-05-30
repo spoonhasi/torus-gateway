@@ -173,7 +173,8 @@ namespace TorusGateway
 
                 if (status == 0 && doc.RootElement.TryGetProperty("value", out var v))
                 {
-                    string path = v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : v.GetRawText();
+                    string path = (v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : v.GetRawText())
+                        .TrimEnd('/'); // 엔드포인트와 동일하게 끝의 '/' 제거
                     if (string.IsNullOrEmpty(path))
                     {
                         TextBoxRootPath.Text = "(empty root path)";
@@ -233,7 +234,7 @@ namespace TorusGateway
                     .ThenBy(f => f.Name)
                     .Select(f => new EntryItem
                     {
-                        Name = f.Name,
+                        Name = f.Name.TrimEnd('/'),
                         Path = f.Path,
                         IsDir = f.IsDir,
                         Size = f.Size,

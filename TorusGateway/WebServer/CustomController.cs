@@ -371,9 +371,43 @@ namespace TorusGateway.WebServer
         // GET은 실제로 data://machine/channel/currentProgram/mainFile/programNameWithPath로 리라이트.
         // POST는 updateData로 안 되고 Api.CNCFileExecute를 거쳐야 해서 별도 처리.
 
+        // JSON 루트 객체의 문자열 "value" 끝에 붙은 '/'를 제거한다.
+        // value가 문자열이 아니거나 변경점이 없으면 원본 그대로 반환. (선행 '/'는 보존)
+        internal static string TrimTrailingSlashInValue(string json)
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return json;
+            if (!doc.RootElement.TryGetProperty("value", out var valueProp)
+                || valueProp.ValueKind != JsonValueKind.String)
+                return json;
+
+            string? original = valueProp.GetString();
+            if (original == null) return json;
+            string trimmed = original.TrimEnd('/');
+            if (trimmed == original) return json;
+
+            using var ms = new MemoryStream();
+            using var writer = new Utf8JsonWriter(ms, TorusController.JsonWriterOpts);
+            writer.WriteStartObject();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.Name == "value")
+                    writer.WriteString("value", trimmed);
+                else
+                {
+                    writer.WritePropertyName(prop.Name);
+                    prop.Value.WriteTo(writer);
+                }
+            }
+            writer.WriteEndObject();
+            writer.Flush();
+            return Encoding.UTF8.GetString(ms.ToArray());
+        }
+
         // GET /machine/ncMemoryPath/directory?machine=1&ncMemoryPath=program
         // 지정한 NC 메모리 경로 하위의 파일/폴더 목록 반환. Api.getFileListEx 래핑.
-        // 정렬: 폴더 우선 → 이름 오름차순. 각 항목은 name/path/size/datetime/isDir.
+        // 정렬: 폴더 우선 → 이름 오름차순. 각 항목은 name/sizeBytes/modifiedAt/isDir.
+        // name 끝의 '/'(폴더 표기)는 제거한다.
         [HttpGet("/machine/ncMemoryPath/directory")]
         public ActionResult<string> GetNcMemoryPathDirectory()
         {
@@ -403,7 +437,7 @@ namespace TorusGateway.WebServer
                     .ThenBy(f => f.Name)
                     .Select(f => new
                     {
-                        name = f.Name,
+                        name = f.Name.TrimEnd('/'),
                         sizeBytes = f.Size,
                         modifiedAt = f.Datetime,
                         isDir = f.IsDir
@@ -435,9 +469,10 @@ namespace TorusGateway.WebServer
                 string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
 
                 string getDataResult = Torus.Torus.Instance.GetData(address, filter);
+                // 루트 경로 끝의 '/' 제거 (예: "//NC/MPF.DIR/" → "//NC/MPF.DIR")
                 return new ContentResult
                 {
-                    Content = TorusController.FilterStatusAndValue(getDataResult),
+                    Content = TrimTrailingSlashInValue(TorusController.FilterStatusAndValue(getDataResult)),
                     ContentType = "application/json",
                     StatusCode = 200
                 };
