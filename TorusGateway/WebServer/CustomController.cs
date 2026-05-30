@@ -575,6 +575,35 @@ namespace TorusGateway.WebServer
             }
         }
 
+        // GET /machine/channel/programName?machine=N&channel=M
+        [HttpGet("/machine/channel/programName")]
+        public ActionResult<string> GetCurrentProgramName()
+        {
+            try
+            {
+                const string address = "data://machine/channel/currentProgram/currentFile/programName";
+                string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+
+                string getDataResult = Torus.Torus.Instance.GetData(address, filter);
+                return new ContentResult
+                {
+                    Content = TorusController.FilterStatusAndValue(getDataResult),
+                    ContentType = "application/json",
+                    StatusCode = 200
+                };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Current program name read failed");
+                return ErrorResponse(500, "Error occurred while reading current program name");
+            }
+        }
+
         // GET /machine/channel/mainProgramName?machine=N&channel=M
         [HttpGet("/machine/channel/mainProgramName")]
         public ActionResult<string> GetMainProgramName()
@@ -601,6 +630,35 @@ namespace TorusGateway.WebServer
             {
                 _logger.LogError(ex, "Main program name read failed");
                 return ErrorResponse(500, "Error occurred while reading main program name");
+            }
+        }
+
+        // GET /machine/channel/programPath?machine=N&channel=M
+        [HttpGet("/machine/channel/programPath")]
+        public ActionResult<string> GetCurrentProgramPath()
+        {
+            try
+            {
+                const string address = "data://machine/channel/currentProgram/currentFile/programNameWithPath";
+                string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+
+                string getDataResult = Torus.Torus.Instance.GetData(address, filter);
+                return new ContentResult
+                {
+                    Content = TorusController.FilterStatusAndValue(getDataResult),
+                    ContentType = "application/json",
+                    StatusCode = 200
+                };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Current program path read failed");
+                return ErrorResponse(500, "Error occurred while reading current program path");
             }
         }
 

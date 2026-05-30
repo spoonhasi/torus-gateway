@@ -74,6 +74,31 @@ Returns the list of machines currently connected to TORUS. Wraps `Api.getMachine
 
 ---
 
+## `GET /machine/channel/programName`
+
+지정한 channel에서 현재 실행 중인 파일의 이름 조회 (경로 제외).
+Reads the name (without path) of the file currently running on the specified channel.
+
+내부적으로 `data://machine/channel/currentProgram/currentFile/programName`을 사용합니다.
+Internally uses `data://machine/channel/currentProgram/currentFile/programName`.
+
+`mainProgramName`은 메인 프로그램(mainFile), 이 엔드포인트는 현재 실행 파일(currentFile)을 반환합니다.
+`mainProgramName` returns the main program (mainFile); this endpoint returns the currently running file (currentFile).
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `channel` (int, required): 채널 번호 / channel number
+
+**Response example:**
+```json
+{ "status": 0, "value": "O0002" }
+```
+
+경로까지 포함된 값이 필요하면 `GET /machine/channel/programPath`를 사용하세요.
+If you need the value including the path, use `GET /machine/channel/programPath`.
+
+---
+
 ## `GET /machine/channel/mainProgramName`
 
 지정한 channel의 현재 메인 프로그램 이름 조회 (경로 제외).
@@ -93,6 +118,28 @@ Internally uses `data://machine/channel/currentProgram/mainFile/programName`.
 
 경로까지 포함된 값이 필요하면 `GET /machine/channel/mainProgramPath`를 사용하세요.
 If you need the value including the path, use `GET /machine/channel/mainProgramPath`.
+
+---
+
+## `GET /machine/channel/programPath`
+
+지정한 channel에서 현재 실행 중인 파일의 경로 조회.
+Reads the path of the file currently running on the specified channel.
+
+내부적으로 `data://machine/channel/currentProgram/currentFile/programNameWithPath`를 사용합니다.
+Internally uses `data://machine/channel/currentProgram/currentFile/programNameWithPath`.
+
+`mainProgramPath`는 메인 프로그램(mainFile), 이 엔드포인트는 현재 실행 파일(currentFile)을 반환합니다.
+`mainProgramPath` returns the main program (mainFile); this endpoint returns the currently running file (currentFile).
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `channel` (int, required): 채널 번호 / channel number
+
+**Response example:**
+```json
+{ "status": 0, "value": "//NC/MPF.DIR/O0002" }
+```
 
 ---
 
