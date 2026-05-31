@@ -83,11 +83,28 @@ namespace TorusGateway.WebServer
             string ncPath = "";
             foreach (var param in HttpContext.Request.Query)
             {
-                if (param.Key == "machine") _ = int.TryParse(param.Value, out machineID);
+                // 쿼리 키는 대소문자 무관하게 인식한다.
+                if (string.Equals(param.Key, "machine", StringComparison.OrdinalIgnoreCase))
+                    _ = int.TryParse(param.Value, out machineID);
                 // 경로 구분자는 '/'로 통일 (클라이언트가 '\'로 보내도 허용).
-                else if (param.Key == "ncMemoryPath") ncPath = (param.Value.ToString() ?? "").Replace('\\', '/');
+                else if (string.Equals(param.Key, "ncMemoryPath", StringComparison.OrdinalIgnoreCase))
+                    ncPath = (param.Value.ToString() ?? "").Replace('\\', '/');
             }
             return (machineID, ncPath);
+        }
+
+        // 쿼리 파라미터를 TORUS filter 문자열로 변환한다.
+        // TORUS 필터 키는 모두 소문자이므로 클라이언트가 대소문자를 섞어 보내도 키를 소문자로 정규화한다.
+        // (값은 변경하지 않는다 — 경로 등 대소문자 의미 보존)
+        // aliasFrom(소문자 기준)이 주어지면 해당 키를 aliasTo로 치환한다. (예: variablenumber → variable)
+        private string BuildFilter(string? aliasFrom = null, string? aliasTo = null)
+        {
+            return string.Join("&", HttpContext.Request.Query.Select(p =>
+            {
+                string key = p.Key.ToLowerInvariant();
+                if (aliasFrom != null && key == aliasFrom) key = aliasTo!;
+                return $"{key}={p.Value}";
+            }));
         }
 
         private ContentResult? ValidateNcMemoryPathParams(int machineID, string ncPath)
@@ -545,6 +562,38 @@ namespace TorusGateway.WebServer
             }
         }
 
+        // GET /machine/channel/variableNumber/variableValue?machine=N&channel=M&variableNumber=N
+        // 사용자 변수 값 조회. TORUS는 필터 키로 'variable'을 기대하므로,
+        // 클라이언트가 보낸 'variableNumber' 키를 'variable'로 변환해 전달한다.
+        [HttpGet("/machine/channel/variableNumber/variableValue")]
+        public ActionResult<string> GetVariableValue()
+        {
+            try
+            {
+                const string address = "data://machine/channel/variable/userVariable";
+                // TORUS는 필터 키로 'variable'을 기대하므로 'variableNumber'(대소문자 무관)를 'variable'로 치환.
+                string filter = BuildFilter(aliasFrom: "variablenumber", aliasTo: "variable");
+
+                string getDataResult = Torus.Torus.Instance.GetData(address, filter);
+                return new ContentResult
+                {
+                    Content = TorusController.FilterStatusAndValue(getDataResult),
+                    ContentType = "application/json",
+                    StatusCode = 200
+                };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Variable value read failed");
+                return ErrorResponse(500, "Error occurred while reading variable value");
+            }
+        }
+
         // GET /machine/ncMemoryRootPath?machine=N
         [HttpGet("/machine/ncMemoryRootPath")]
         public ActionResult<string> GetNcMemoryRootPath()
@@ -552,7 +601,7 @@ namespace TorusGateway.WebServer
             try
             {
                 const string address = "data://machine/ncMemory/rootPath";
-                string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+                string filter = BuildFilter();
 
                 string getDataResult = Torus.Torus.Instance.GetData(address, filter);
                 // 루트 경로 끝의 '/' 제거 (예: "//NC/MPF.DIR/" → "//NC/MPF.DIR")
@@ -582,7 +631,7 @@ namespace TorusGateway.WebServer
             try
             {
                 const string address = "data://machine/channel/currentProgram/currentFile/programName";
-                string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+                string filter = BuildFilter();
 
                 string getDataResult = Torus.Torus.Instance.GetData(address, filter);
                 return new ContentResult
@@ -611,7 +660,7 @@ namespace TorusGateway.WebServer
             try
             {
                 const string address = "data://machine/channel/currentProgram/mainFile/programName";
-                string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+                string filter = BuildFilter();
 
                 string getDataResult = Torus.Torus.Instance.GetData(address, filter);
                 return new ContentResult
@@ -640,7 +689,7 @@ namespace TorusGateway.WebServer
             try
             {
                 const string address = "data://machine/channel/currentProgram/currentFile/programNameWithPath";
-                string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+                string filter = BuildFilter();
 
                 string getDataResult = Torus.Torus.Instance.GetData(address, filter);
                 return new ContentResult
@@ -669,7 +718,7 @@ namespace TorusGateway.WebServer
             try
             {
                 const string address = "data://machine/channel/currentProgram/mainFile/programNameWithPath";
-                string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+                string filter = BuildFilter();
 
                 string getDataResult = Torus.Torus.Instance.GetData(address, filter);
                 return new ContentResult
@@ -703,8 +752,11 @@ namespace TorusGateway.WebServer
                 int channel = -1;
                 foreach (var param in HttpContext.Request.Query)
                 {
-                    if (param.Key == "machine") _ = int.TryParse(param.Value, out machineID);
-                    else if (param.Key == "channel") _ = int.TryParse(param.Value, out channel);
+                    // 쿼리 키는 대소문자 무관하게 인식한다.
+                    if (string.Equals(param.Key, "machine", StringComparison.OrdinalIgnoreCase))
+                        _ = int.TryParse(param.Value, out machineID);
+                    else if (string.Equals(param.Key, "channel", StringComparison.OrdinalIgnoreCase))
+                        _ = int.TryParse(param.Value, out channel);
                 }
                 if (machineID < 1) return ErrorResponse(400, "Invalid 'machine' parameter");
                 if (channel < 1) return ErrorResponse(400, "Invalid 'channel' parameter");

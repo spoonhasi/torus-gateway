@@ -15,6 +15,11 @@ Every JSON response contains at least a `status` field.
 - 앱 자체 오류(파라미터 검증 실패 등) / App-level error (e.g., parameter validation): `{ "status": -1, "error": "<message>" }`, HTTP 400/404/500
 - TORUS 호출 실패 / TORUS call failure: `{ "status": <TORUS code>, "error": "<mapped description>" }`, HTTP 502
 
+## 공통 규칙 / Common rules
+
+쿼리 파라미터 **키는 대소문자를 구분하지 않습니다** (예: `machine`, `Machine`, `MACHINE` 모두 동일). 값은 그대로 유지됩니다.
+Query parameter **keys are case-insensitive** (e.g. `machine`, `Machine`, `MACHINE` are equivalent). Values are preserved as-is.
+
 ---
 
 ## `GET /`
@@ -179,6 +184,26 @@ Sets / executes the main program on the specified channel. Wraps `Api.CNCFileExe
 The array form `{ "value": ["program/O0001.nc"] }` is also accepted.
 
 **Response:** `{ "status": 0 }`
+
+---
+
+## `GET /machine/channel/variableNumber/variableValue`
+
+지정한 channel의 사용자 변수(user variable) 값 조회.
+Reads the value of a user variable on the specified channel.
+
+내부적으로 `data://machine/channel/variable/userVariable`를 사용하며, 쿼리의 `variableNumber` 키를 TORUS 필터 키 `variable`로 변환해 전달합니다.
+Internally uses `data://machine/channel/variable/userVariable`; the `variableNumber` query key is translated to the TORUS filter key `variable`.
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `channel` (int, required): 채널 번호 / channel number
+- `variableNumber` (int, required): 변수 번호 / variable number
+
+**Response example:**
+```json
+{ "status": 0, "value": 123.456 }
+```
 
 ---
 

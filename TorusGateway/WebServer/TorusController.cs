@@ -42,7 +42,9 @@ namespace TorusGateway.WebServer
         {
             var segmentArray = segments.Split('/', StringSplitOptions.RemoveEmptyEntries);
             string address = "data://machine/" + string.Join("/", segmentArray);
-            string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key}={p.Value}"));
+            // TORUS 필터 키는 모두 소문자이므로, 클라이언트가 대소문자를 섞어 보내도 키를 소문자로 정규화한다.
+            // (값은 변경하지 않는다 — 경로 등 대소문자 의미 보존)
+            string filter = string.Join("&", HttpContext.Request.Query.Select(p => $"{p.Key.ToLowerInvariant()}={p.Value}"));
             return (address, filter);
         }
 
