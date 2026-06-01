@@ -865,6 +865,67 @@ namespace TorusGateway.WebServer
             }
         }
 
+        // POST /machine/ncMemoryPath/name?machine=1&ncMemoryPath=program/O0001.nc
+        // body: {"value": "O0002.nc"}  → 지정한 NC 파일/폴더의 이름 변경
+        // ncMemoryPath는 대상의 전체 경로, value는 새 이름(경로 아님). Api.CNCFileRename 래핑.
+        [HttpPost("/machine/ncMemoryPath/name")]
+        public async Task<ActionResult<string>> PostNcFileName()
+        {
+            bool bodyParseDone = false;
+            try
+            {
+                var (machineID, ncPath) = ExtractNcMemoryPathParams();
+                var validationError = ValidateNcMemoryPathParams(machineID, ncPath);
+                if (validationError != null) return validationError;
+
+                using var reader = new StreamReader(Request.Body);
+                string body = await reader.ReadToEndAsync();
+                body = TorusController.NormalizeValueKey(body);
+
+                using var doc = JsonDocument.Parse(body);
+                bodyParseDone = true;
+                if (!doc.RootElement.TryGetProperty("value", out var valueProp))
+                    return ErrorResponse(400, "'value' field is required");
+
+                // value가 배열이면 첫 번째 요소, 아니면 직접 사용
+                string newName;
+                if (valueProp.ValueKind == JsonValueKind.Array)
+                    newName = valueProp[0].GetString() ?? "";
+                else
+                    newName = valueProp.GetString() ?? "";
+
+                if (string.IsNullOrWhiteSpace(newName))
+                    return ErrorResponse(400, "'value' must be a non-empty new name");
+                // 새 이름은 경로가 아닌 단일 이름이어야 한다(디렉토리 이동/탈출 방지).
+                if (newName.Contains('/') || newName.Contains('\\') || newName.Contains(".."))
+                    return ErrorResponse(400, "'value' must be a name, not a path");
+
+                string renameResult = Torus.Torus.Instance.RenameFile(ncPath, newName, machineID);
+                using var resultDoc = JsonDocument.Parse(renameResult);
+                int renameStatus = resultDoc.RootElement.GetProperty("status").GetInt32();
+                if (renameStatus != 0)
+                    return TorusErrorResponse(renameStatus);
+
+                var response = JsonSerializer.Serialize(new { status = 0 }, TorusController.JsonSerOptions);
+                return new ContentResult { Content = response, ContentType = "application/json", StatusCode = 200 };
+            }
+            catch (JsonException ex)
+            {
+                if (!bodyParseDone)
+                {
+                    _logger.LogWarning(ex, "Invalid JSON in request body");
+                    return ErrorResponse(400, "Invalid JSON in request body");
+                }
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "NC file rename failed");
+                return ErrorResponse(500, "Error occurred while renaming NC file");
+            }
+        }
+
     }
 
     // getFileListEx 응답 역직렬화용 모델. (TORUS 입력 키 기준 — path는 응답/탐색에 미사용)

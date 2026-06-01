@@ -73,6 +73,9 @@
                 <Button x:Name="ButtonNewFolder" Content="New Folder" Width="90" Margin="8,0,0,0"
                         Click="ButtonNewFolder_Click" IsEnabled="False"
                         ToolTip="Create a new folder under the current folder"/>
+                <Button x:Name="ButtonRename" Content="Rename" Width="90" Margin="8,0,0,0"
+                        Click="ButtonRename_Click" IsEnabled="False"
+                        ToolTip="Rename the selected file or folder"/>
                 <Button x:Name="ButtonDelete" Content="Delete" Width="90" Margin="8,0,0,0"
                         Click="ButtonDelete_Click" IsEnabled="False"
                         ToolTip="Delete the selected file from the machine"/>

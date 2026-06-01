@@ -389,7 +389,16 @@ namespace TorusGateway
             TextBlockStatus.Text = "Uploading...";
             try
             {
-                string content = await File.ReadAllTextAsync(localPath);
+                // 바이너리 파일은 텍스트 content 엔드포인트({"value":"<문자열>"})로 올릴 수 없다.
+                // read-as-text는 깨진 바이트를 U+FFFD로 치환해 조용히 손상시키므로, 업로드 전에 판정해 막는다.
+                if (!TryReadAsText(localPath, out string content))
+                {
+                    TextBlockStatus.Text = "Upload canceled: binary file";
+                    MessageBox.Show(this,
+                        "This file appears to be binary and cannot be uploaded as an NC text file.",
+                        "Upload not allowed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
                 string jsonBody = JsonSerializer.Serialize(new { value = content });
                 string body = await HttpPostJsonAsync(
                     $"/machine/ncMemoryPath/content?machine={_machineId}&ncMemoryPath={EncodePath(ncPath)}", jsonBody);
@@ -422,6 +431,28 @@ namespace TorusGateway
                 SetBusy(false);
             }
         }
+
+        // 바이트 배열이 NC 텍스트(G-code)로 안전한지 판정하고, 그렇다면 UTF-8로 디코딩한다.
+        // NULL 바이트가 있거나 엄격 UTF-8 디코딩에 실패하면 바이너리로 보고 false를 반환한다.
+        // (NC 파일은 ASCII/UTF-8 텍스트라는 전제 — git의 바이너리 판정과 동일한 휴리스틱)
+        internal static bool TryDecodeNcText(byte[] bytes, out string text)
+        {
+            text = "";
+            if (System.Array.IndexOf(bytes, (byte)0) >= 0) return false;   // NULL 바이트 → 바이너리
+            try
+            {
+                var utf8 = new UTF8Encoding(false, throwOnInvalidBytes: true);
+                // UTF-8 BOM(EF BB BF)이 있으면 건너뛰고 디코딩한다.
+                int start = (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) ? 3 : 0;
+                text = utf8.GetString(bytes, start, bytes.Length - start);
+                return true;
+            }
+            catch (DecoderFallbackException) { return false; }
+        }
+
+        // 로컬 파일을 읽어 위 판정을 적용. 파일 I/O는 여기서만 수행한다.
+        private static bool TryReadAsText(string path, out string text)
+            => TryDecodeNcText(File.ReadAllBytes(path), out text);
 
         // 현재 폴더 아래에 새 폴더를 생성. POST /machine/ncMemoryPath/directory ({"value":[]}).
         // ncMemoryPath = 현재경로 + "/" + 입력한 폴더명. 엔드포인트가 마지막 세그먼트를 폴더명으로 분리한다.
@@ -520,6 +551,60 @@ namespace TorusGateway
             }
         }
 
+        // 선택한 파일/폴더의 이름을 POST /machine/ncMemoryPath/name ({"value":"<새이름>"}) 로 변경.
+        // ncMemoryPath = 대상의 전체 경로(현재경로 + "/" + 현재이름), value = 새 이름(경로 아님).
+        private async void ButtonRename_Click(object sender, RoutedEventArgs e)
+        {
+            if (_busy || _machineId < 1) return;
+            if (ListViewEntries.SelectedItem is not EntryItem item || item.IsParent) return;
+
+            string newName = Microsoft.VisualBasic.Interaction.InputBox(
+                "Enter a new name:", "Rename", item.Name).Trim();
+            if (string.IsNullOrEmpty(newName) || newName == item.Name) return; // 취소/빈 입력/변경 없음
+            if (newName.Contains('/') || newName.Contains('\\'))
+            {
+                MessageBox.Show("Name cannot contain '/' or '\\'.", "Error");
+                return;
+            }
+
+            string ncPath = _currentPath.TrimEnd('/') + "/" + item.Name;
+            SetBusy(true);
+            TextBlockStatus.Text = "Renaming...";
+            try
+            {
+                string jsonBody = JsonSerializer.Serialize(new { value = newName });
+                string body = await HttpPostJsonAsync(
+                    $"/machine/ncMemoryPath/name?machine={_machineId}&ncMemoryPath={EncodePath(ncPath)}", jsonBody);
+                using var doc = JsonDocument.Parse(body);
+                int status = GetStatus(doc);
+                if (status != 0)
+                {
+                    TextBlockStatus.Text = FormatError(doc, status);
+                    return;
+                }
+                // busy를 이 핸들러가 잡고 있으므로 Core를 직접 호출해 목록을 갱신.
+                await ListDirectoryCoreAsync(_currentPath);
+                // 새 이름 항목을 선택/스크롤하여 눈에 띄게 한다.
+                var renamed = _entries.FirstOrDefault(it => !it.IsParent && it.Name == newName);
+                if (renamed != null)
+                {
+                    ListViewEntries.SelectedItem = renamed;
+                    ListViewEntries.ScrollIntoView(renamed);
+                }
+                // 갱신이 status를 폴더/파일 수로 덮으므로 확인 메시지를 마지막에 다시 표시.
+                TextBlockStatus.Text = $"Renamed to: {newName}";
+            }
+            catch (Exception ex)
+            {
+                TextBlockStatus.Text = $"Rename failed: {ex.Message}";
+                MessageBox.Show($"Rename failed: {ex.Message}", "Error");
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+        }
+
         // ── 상태 / 버튼 제어 ───────────────────────────────────────
 
         private void ListViewEntries_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -535,11 +620,12 @@ namespace TorusGateway
             UpdateButtons();
         }
 
-        // Download: 파일(폴더/"..." 아님) 선택 시. Delete: 파일/폴더("..." 아님) 선택 시.
+        // Download: 파일(폴더/"..." 아님) 선택 시. Delete/Rename: 파일/폴더("..." 아님) 선택 시.
         // Upload/New Folder: 설비 선택+현재 경로 존재 시. 작업 중엔 모두 비활성.
         private void UpdateButtons()
         {
-            if (ButtonDownload == null || ButtonUpload == null || ButtonDelete == null || ButtonNewFolder == null) return;
+            if (ButtonDownload == null || ButtonUpload == null || ButtonDelete == null
+                || ButtonNewFolder == null || ButtonRename == null) return;
             bool active = !_busy && _machineId >= 1 && !string.IsNullOrEmpty(_currentPath);
             ButtonUpload.IsEnabled = active;
             ButtonNewFolder.IsEnabled = active;
@@ -548,6 +634,7 @@ namespace TorusGateway
             bool entrySelected = selected != null && !selected.IsParent; // 파일 또는 폴더
             ButtonDownload.IsEnabled = active && fileSelected;
             ButtonDelete.IsEnabled = active && entrySelected;
+            ButtonRename.IsEnabled = active && entrySelected;
         }
 
         private void ButtonClose_Click(object sender, RoutedEventArgs e) => Close();

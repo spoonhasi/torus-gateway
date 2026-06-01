@@ -19,12 +19,15 @@ TorusGateway/                # 메인 WPF + 내장 웹서버
   MainWindow.xaml(.cs)       # 메인 UI - Torus 연결, 웹서버 open/close, Docs, IP 허용목록(런타임 갱신), 트레이/종료
   DocsWindow.xaml(.cs)       # 커스텀 엔드포인트 문서 뷰어 (EmbeddedResource CustomEndpoints.md 표시, 모달)
   TestRequestWindow.xaml(.cs)# 초기 셋팅용 HTTP 테스터 (GET/POST, JSON body, 모달)
+  NcExplorerWindow.xaml(.cs) # NC 파일 탐색기 (모달). 전부 게이트웨이 자신의 HTTP 엔드포인트로 동작
+                             # 설비 선택→루트/목록 조회, 폴더 진입("..."), 다운로드/업로드(텍스트, 바이너리 가드)/이름변경/삭제/새폴더
+                             # 웹서버 가동 중일 때만 활성 (MainWindow에서 버튼 제어)
   ConfigManager.cs           # config.ini (Win32 INI) 읽기/쓰기 헬퍼 (static)
   TorusGateway.csproj        # <InternalsVisibleTo Include="TorusGateway.Tests">, SolutionDir 폴백 포함
   Torus/
     Torus.cs                 # TORUS API 싱글턴 래퍼. _apiLock으로 모든 네이티브 호출 직렬화
                              # 메서드: GetData, UpdateData, UploadFile, DownloadFile, DeleteFile,
-                             #         ExecuteCNCFile, GetMachinesInfo
+                             #         ExecuteCNCFile, CreateFolder, RenameFile, GetFileList, GetMachinesInfo
     MachineListControl.xaml(.cs)  # MachineList.xml 편집 UserControl (재사용 가능, 외부 의존 없음)
     MachineListWindow.xaml(.cs)   # 위 컨트롤을 감싼 모달 창 (재사용 래퍼)
   WebServer/
@@ -36,10 +39,10 @@ TorusGateway/                # 메인 WPF + 내장 웹서버
                              # 공용 JSON 옵션: JsonSerOptions, JsonWriterOpts (UnsafeRelaxedJsonEscaping)
                              # JsonException 분리: body 파싱 실패 400, TORUS 응답 파싱 실패 502
     CustomController.cs      # 합성 엔드포인트 모음 + TempDirDownload/Upload 상수 + CleanupOrphanedTempDirs
-                             # /machineList (GET), /docs/help (GET),
-                             # /machine/channel/mainProgramPath (GET/POST),
-                             # /machine/ncMemoryPath/content (GET/POST), /machine/ncMemoryPath/exist (POST)
-                             # 헬퍼: RenameValueArrayKey, ErrorResponse, TorusErrorResponse
+                             # 엔드포인트 목록/사양은 CustomEndpoints.md 참조 (예: /machineList, /docs/help,
+                             #   /machine/channel/program*·mainProgram*, /machine/channel/variableNumber/variableValue,
+                             #   /machine/ncMemoryRootPath, /machine/ncMemoryPath/{directory,content,exist,name})
+                             # 헬퍼: BuildFilter, RenameValueArrayKey, TrimTrailingSlashInValue, ErrorResponse, TorusErrorResponse
                              # JsonException 분리: body 파싱 실패 400, TORUS 응답 파싱 실패 502
     CustomEndpoints.md       # 커스텀 엔드포인트 안내 문서 (EmbeddedResource, 한/영 병행)
     TorusStatusCodes.cs      # TORUS NC_RET enum 값 → 설명 문자열 매핑
@@ -54,6 +57,7 @@ TorusGateway.Tests/          # xUnit 테스트 프로젝트 (net8.0-windows, x86
   TorusStatusCodesTests.cs       # 4건
   IpAllowlistOptionsTests.cs     # 12건 (Star/CIDR/IPv6 loopback 정규화/Update 시나리오)
   ConfigManagerTests.cs          # 5건 (Write→Read, 기본값 기록, 섹션 격리)
+  TryDecodeNcTextTests.cs        # 8건 (업로드 바이너리 판정 — NULL바이트/UTF-8 유효성/BOM)
 TorusApi/                    # TORUS 네이티브 DLL (빌드시 출력 디렉토리로 복사)
 TorusGateway.info            # 앱 메타데이터 (이름, 버전, GUID)
 ```
@@ -123,6 +127,14 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 - Method 드롭다운 (GET/POST), Path, Body(POST만), 응답(상태코드 + 본문) 표시
 - POST 선택 시 라벨에 `{"value": 25.5}` 형태 힌트, body가 비어있으면 템플릿 자동 삽입
 - 10초 타임아웃, `Content-Type: application/json` 고정
+
+## NC 파일 탐색기 창
+- NC 파일 탐색기 모달 (`NcExplorerWindow`). **모든 기능이 게이트웨이 자신의 HTTP 엔드포인트(커스텀 엔드포인트)로 동작** — Torus 싱글턴 직접 호출 안 함. 따라서 웹서버 가동 중일 때만 열 수 있다 (MainWindow에서 버튼 제어).
+- 접속 대상은 메인 창 Host/Port (와일드카드/빈 값은 `127.0.0.1`로 대체). loopback은 IP 허용목록과 무관하게 항상 허용되어 자기 요청이 차단되지 않음.
+- 설비 콤보박스 선택 → `GET /machine/ncMemoryRootPath`로 루트 조회 → `GET /machine/ncMemoryPath/directory`로 목록. 폴더 더블클릭 진입, 첫 항목 `...`으로 상위 복귀(방문 스택 기반, 경로 포맷 비의존).
+- 기능별 엔드포인트: Download `GET .../content`, Upload `POST .../content`, New Folder `POST .../directory`, Rename `POST .../name`, Delete `POST .../exist {"value":false}`. 작업 후 목록을 갱신하고 대상 항목을 선택/스크롤.
+- 업로드는 텍스트(`{"value":"<내용>"}`) 기반이라 바이너리 파일을 막는다: 로컬 파일을 읽기 전 NULL 바이트/엄격 UTF-8 디코딩으로 판정(`TryDecodeNcText`, `internal static`로 테스트됨), 바이너리면 경고 후 취소.
+- Rename: `InputBox`에 현재 이름을 기본값으로 채움. 새 이름은 단일 이름만 허용(`/`·`\` 거부), 파일/폴더 모두 대상.
 
 ## MachineList.xml 관리
 - TORUS Settings 버튼으로 `MachineListWindow` 모달 열기. 경로가 실제 파일이면 자동 Read.

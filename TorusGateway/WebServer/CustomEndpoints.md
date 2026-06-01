@@ -334,3 +334,26 @@ Sending `{"value": false}` deletes the target NC file. `true` is not supported.
 ```
 
 **Response:** `{ "status": 0 }`
+
+---
+
+## `POST /machine/ncMemoryPath/name`
+
+지정한 NC 파일/폴더의 이름을 변경. `Api.CNCFileRename` 래핑.
+Renames the target NC file or folder. Wraps `Api.CNCFileRename`.
+
+`ncMemoryPath`는 대상의 **전체 경로**, body의 `value`는 **새 이름**(경로가 아님)입니다.
+`ncMemoryPath` is the **full path** of the target; the body `value` is the **new name** (not a path).
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `ncMemoryPath` (string, required): 대상의 전체 경로 / full path of the target. 예 / e.g.: `program/O0001.nc`
+
+**Body:**
+```json
+{ "value": "O0002.nc" }
+```
+배열 형식 `{ "value": ["O0002.nc"] }`도 허용됩니다. `value`에는 `/`, `\`, `..`를 쓸 수 없습니다(단일 이름만 허용).
+The array form `{ "value": ["O0002.nc"] }` is also accepted. `value` may not contain `/`, `\`, or `..` (a single name only).
+
+**Response:** `{ "status": 0 }`

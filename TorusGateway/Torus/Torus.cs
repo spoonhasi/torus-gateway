@@ -150,6 +150,17 @@ namespace TorusGateway.Torus
             }
         }
 
+        // 지정한 NC 파일/폴더의 이름을 변경한다. CNCFileRename(전체경로, 새이름, ...) 사용.
+        // ncPath는 대상의 전체 경로, newName은 새 이름(경로 아님).
+        public string RenameFile(string ncPath, string newName, int machineID)
+        {
+            lock (_apiLock)
+            {
+                int result = Api.CNCFileRename(ncPath, newName, out Item _, machineID, FileListTimeoutMs);
+                return JsonSerializer.Serialize(new { status = result });
+            }
+        }
+
         public string GetMachinesInfo()
         {
             lock (_apiLock)
