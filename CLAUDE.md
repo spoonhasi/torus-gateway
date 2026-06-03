@@ -154,8 +154,16 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 - 크래시 후 남은 잔여물은 앱 시작 시 `CustomController.CleanupOrphanedTempDirs()`가 처리
 - 정리 실패는 `FileLogger.WriteWarn`으로 기록 (이전엔 silent catch였음)
 
+## API 요청 로그 (UI)
+- `RequestLoggingMiddleware`가 요청마다 구조화 정보(`RequestLogInfo`: 메서드·IP·경로+쿼리·상태·소요·시각)를 `RequestLogged` 이벤트로 발행 → `MainWindow`가 200ms 타이머로 배치 반영. favicon 제외, 각 줄에 IP 표시.
+- UI는 **GET 정기 / GET 간헐 / POST** 세 패널(동일 높이, 사이를 `GridSplitter`로 조절). 패널당 1000줄 캡, 맨 아래일 때만 자동 스크롤.
+- GET 주기성 집계(`ProcessGet`, UI 스레드): 키=`IP + 경로+쿼리`(입력 그대로, 대소문자 구분). 도착 간격 EMA의 변동계수(편차/평균)가 작고(≤`RegularMaxCv`) 충분히 반복(≥`RegularMinCount`)되며 주기가 빠르면(≤`RegularMaxPeriodMs`) **정기**로 승격 → 표(IP·Request·Count·Period·Last·Status)를 in-place 갱신, 아니면 간헐 스크롤 목록.
+- `/health`는 조회 데이터와 무관한 정적 응답이라 **1회만 와도 무조건 정기**로 표시(`IsHealthPath`, 대소문자 무관). 도착 간격이 아직 없으면 Period는 `-`.
+- 유휴 제거: 마지막 요청 후 `max(60s, 5×주기)` 경과 시 집계·표행 삭제(현재 살아있는 폴러만 유지). 키 상한 500(LRU).
+- POST 및 GET 외 메서드는 POST 패널의 스크롤 목록으로.
+
 ## 파일 로그
-- `FileLogger` (static, `WebServer/FileLogger.cs`) — 4xx/5xx 응답만 파일에 기록 (UI ListBox엔 모두 표시)
+- `FileLogger` (static, `WebServer/FileLogger.cs`) — 4xx/5xx 응답만 파일에 기록 (UI 로그 패널엔 모두 표시 — 위 'API 요청 로그' 참고)
 - 위치: `<exe 디렉토리>/logs/yyyy-MM-dd.log`, 포맷: `2026-05-22 14:23:45.123 [WARN ] 192.168.1.10 GET /... 404 12ms`
 - 사이즈 캡: 시작 시 + 일자 전환 시 점검, 총 합이 캡 초과면 가장 오래된 파일부터 삭제(최신 1개는 항상 보존)
 - 설정: `config.ini` `[Logging] MaxTotalMB=50` (기본 50MB, 0이면 비활성화)

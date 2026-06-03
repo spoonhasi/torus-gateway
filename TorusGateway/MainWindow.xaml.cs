@@ -142,6 +142,8 @@ namespace TorusGateway
         {
             string key = info.ClientIp + " " + info.PathAndQuery;
             DateTime now = info.TimestampLocal;
+            // /health는 조회 데이터와 무관한 정적 헬스 체크이므로, 1회만 와도 무조건 정기로 취급한다.
+            bool isHealth = IsHealthPath(info.PathAndQuery);
 
             if (_getAgg.TryGetValue(key, out var entry))
             {
@@ -163,9 +165,10 @@ namespace TorusGateway
                 entry.LastStatus = info.StatusCode;
 
                 double cv = entry.EmaInterval > 0 ? entry.EmaDev / entry.EmaInterval : double.PositiveInfinity;
-                bool regular = entry.Count >= RegularMinCount
-                               && entry.EmaInterval <= RegularMaxPeriodMs
-                               && cv <= RegularMaxCv;
+                bool regular = isHealth
+                               || (entry.Count >= RegularMinCount
+                                   && entry.EmaInterval <= RegularMaxPeriodMs
+                                   && cv <= RegularMaxCv);
 
                 if (regular)
                 {
@@ -184,9 +187,28 @@ namespace TorusGateway
 
             // 처음 본 요청
             if (_getAgg.Count >= MaxAggKeys) EvictOldestGetAgg();
-            _getAgg[key] = new GetAggEntry { Count = 1, LastSeen = now, LastStatus = info.StatusCode };
+            var fresh = new GetAggEntry { Count = 1, LastSeen = now, LastStatus = info.StatusCode };
+            _getAgg[key] = fresh;
+
+            if (isHealth)
+            {
+                // /health는 첫 요청부터 바로 정기 표에 표시(간헐로 안 보냄).
+                fresh.Row = new GetRegularRow(info.ClientIp, info.PathAndQuery);
+                _getRegularRows.Add(fresh.Row);
+                fresh.Row.Update(fresh.Count, fresh.EmaInterval, now, info.StatusCode);
+                return false;
+            }
+
             _getIntermittentRows.Add(line);
             return true;
+        }
+
+        // /health 경로 여부. 라우팅이 대소문자 무관이므로 경로 비교도 대소문자 무관으로 한다.
+        private static bool IsHealthPath(string pathAndQuery)
+        {
+            int q = pathAndQuery.IndexOf('?');
+            string path = q >= 0 ? pathAndQuery.Substring(0, q) : pathAndQuery;
+            return string.Equals(path, "/health", StringComparison.OrdinalIgnoreCase);
         }
 
         // 한동안 안 온 GET 집계를 제거(정기 표 행도 함께) → '현재 살아있는 폴러'만 유지.
@@ -267,7 +289,10 @@ namespace TorusGateway
             public void Update(int count, double periodMs, DateTime last, int status)
             {
                 Count = count;
-                Period = periodMs >= 1000 ? $"{periodMs / 1000.0:0.0}s" : $"{periodMs:0}ms";
+                // 아직 도착 간격이 없으면(예: /health 첫 요청) 주기를 '-'로 표시.
+                Period = periodMs <= 0 ? "-"
+                       : periodMs >= 1000 ? $"{periodMs / 1000.0:0.0}s"
+                       : $"{periodMs:0}ms";
                 Last = last.ToString("HH:mm:ss");
                 Status = status;
             }
