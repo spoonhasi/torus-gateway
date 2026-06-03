@@ -207,6 +207,30 @@ Internally uses `data://machine/channel/variable/userVariable`; the `variableNum
 
 ---
 
+## `POST /machine/channel/variableNumber/variableValue`
+
+지정한 channel의 사용자 변수(user variable) 값 쓰기.
+Writes the value of a user variable on the specified channel.
+
+GET과 동일하게 내부적으로 `data://machine/channel/variable/userVariable`를 사용하며, `variableNumber` 키를 `variable`로 변환합니다.
+Like the GET, it internally uses `data://machine/channel/variable/userVariable` and translates the `variableNumber` query key to `variable`.
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `channel` (int, required): 채널 번호 / channel number
+- `variableNumber` (int, required): 변수 번호 / variable number
+
+**Body:**
+```json
+{ "value": 123.456 }
+```
+단일 값이면 자동으로 배열로 감싸지고(`{ "value": [123.456] }`), `Value`/`VALUE` 키도 `value`로 정규화됩니다.
+A single value is automatically wrapped into an array (`{ "value": [123.456] }`), and `Value`/`VALUE` keys are normalized to `value`.
+
+**Response:** `{ "status": 0 }`
+
+---
+
 ## `GET /machine/ncMemoryRootPath`
 
 지정한 머신의 NC 메모리 루트 경로 조회.

@@ -594,6 +594,52 @@ namespace TorusGateway.WebServer
             }
         }
 
+        // POST /machine/channel/variableNumber/variableValue?machine=N&channel=M&variableNumber=N
+        // body: {"value": <값>}  → 사용자 변수 값 쓰기.
+        // GET과 동일하게 주소를 data://machine/channel/variable/userVariable로 리라이트하고
+        // 'variableNumber' 키를 'variable'로 치환한다. body는 pass-through POST와 동일하게 정규화한다
+        // (Value/VALUE → value, 단일 값 → 배열 래핑).
+        [HttpPost("/machine/channel/variableNumber/variableValue")]
+        public async Task<ActionResult<string>> PostVariableValue()
+        {
+            bool bodyParseDone = false;
+            try
+            {
+                const string address = "data://machine/channel/variable/userVariable";
+                string filter = BuildFilter(aliasFrom: "variablenumber", aliasTo: "variable");
+
+                using var reader = new StreamReader(Request.Body);
+                string body = await reader.ReadToEndAsync();
+                body = TorusController.NormalizeValueKey(body);
+                body = TorusController.WrapValueToArray(body);
+                bodyParseDone = true;
+
+                string updateResult = Torus.Torus.Instance.UpdateData(address, filter, body);
+                using var resultDoc = JsonDocument.Parse(updateResult);
+                int status = resultDoc.RootElement.GetProperty("status").GetInt32();
+                if (status != 0)
+                    return TorusErrorResponse(status);
+
+                var response = JsonSerializer.Serialize(new { status = 0 }, TorusController.JsonSerOptions);
+                return new ContentResult { Content = response, ContentType = "application/json", StatusCode = 200 };
+            }
+            catch (JsonException ex)
+            {
+                if (!bodyParseDone)
+                {
+                    _logger.LogWarning(ex, "Invalid JSON in request body");
+                    return ErrorResponse(400, "Invalid JSON in request body");
+                }
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Variable value write failed");
+                return ErrorResponse(500, "Error occurred while writing variable value");
+            }
+        }
+
         // GET /machine/ncMemoryRootPath?machine=N
         [HttpGet("/machine/ncMemoryRootPath")]
         public ActionResult<string> GetNcMemoryRootPath()
