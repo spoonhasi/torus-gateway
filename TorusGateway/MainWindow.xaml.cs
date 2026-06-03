@@ -26,9 +26,24 @@ namespace TorusGateway
         private int _modalDepth = 0; // 모달 창(Settings, Docs 등) 표시 중인 개수
 
         private const int MaxLogLines = 1000;
-        private readonly ConcurrentQueue<string> _logQueue = new();
-        private readonly ObservableCollection<string> _logEntries = new();
+        // 미들웨어 스레드 → UI 스레드(flush)로 넘기는 요청 큐.
+        private readonly ConcurrentQueue<RequestLogInfo> _logQueue = new();
+        // 아래 패널: POST 및 GET 외 메서드 — 스크롤 목록.
+        private readonly ObservableCollection<string> _logEntriesPost = new();
+        // 위 패널(GET)은 정기(주기)/간헐로 다시 나뉜다.
+        private readonly ObservableCollection<GetRegularRow> _getRegularRows = new(); // 정기 — in-place 갱신 표
+        private readonly ObservableCollection<string> _getIntermittentRows = new();   // 간헐 — 스크롤 목록
+        private readonly Dictionary<string, GetAggEntry> _getAgg = new();             // GET 시그니처별 집계(UI 스레드 전용)
         private readonly DispatcherTimer _logTimer;
+
+        // ── GET 주기성 판정/집계 파라미터 (조정 가능) ──
+        private const double EmaAlpha = 0.3;              // 도착 간격 EMA 가중치
+        private const int RegularMinCount = 4;            // 정기 승격 최소 횟수(간격 3개 이상 확보)
+        private const double RegularMaxPeriodMs = 10000;   // 이보다 느린 주기는 정기로 보지 않음
+        private const double RegularMaxCv = 0.4;          // 변동계수(편차/평균)가 이하면 '주기적'
+        private const double IdleFloorMs = 60000;         // 최소 유휴 제거 임계(60초)
+        private const double IdleFactor = 5;              // 주기의 N배 동안 안 오면 제거
+        private const int MaxAggKeys = 500;               // 집계 키 상한(초과 시 LRU 제거)
 
         private const string ConfigFile = "config.ini";
         private const string ConfigSection = "MainWindow";
@@ -48,7 +63,9 @@ namespace TorusGateway
 
             LoadSettings();
 
-            ListBoxApiLog.ItemsSource = _logEntries;
+            ListViewGetRegular.ItemsSource = _getRegularRows;
+            ListBoxGetIntermittent.ItemsSource = _getIntermittentRows;
+            ListBoxApiLogPost.ItemsSource = _logEntriesPost;
             RequestLoggingMiddleware.RequestLogged += OnRequestLogged;
 
             // 200ms 간격으로 로그 배치 갱신 (Dispatcher 큐 과적 방지)
@@ -81,32 +98,183 @@ namespace TorusGateway
             }
         }
 
-        // 미들웨어 스레드에서 호출 — ConcurrentQueue로 lock 없이 안전하게 적재
-        private void OnRequestLogged(string logEntry)
+        // 미들웨어 스레드에서 호출 — ConcurrentQueue로 lock 없이 적재. 집계는 UI 스레드 flush에서 처리.
+        private void OnRequestLogged(RequestLogInfo info)
         {
-            _logQueue.Enqueue(logEntry);
+            _logQueue.Enqueue(info);
         }
 
-        // UI 스레드에서 200ms마다 큐를 비우고 ListBox에 반영
+        // UI 스레드에서 200ms마다 큐를 비워 GET(정기/간헐)·POST 패널에 반영하고, 유휴 GET 집계를 정리한다.
         private void FlushLogQueue(object? sender, EventArgs e)
         {
-            bool added = false;
-            while (_logQueue.TryDequeue(out var entry))
+            bool addedIntermittent = false, addedPost = false;
+            while (_logQueue.TryDequeue(out var info))
             {
-                _logEntries.Add(entry);
-                added = true;
+                string line = FormatLogLine(info);
+                if (string.Equals(info.Method, "GET", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (ProcessGet(info, line)) addedIntermittent = true;
+                }
+                else
+                {
+                    _logEntriesPost.Add(line);
+                    addedPost = true;
+                }
             }
 
-            while (_logEntries.Count > MaxLogLines)
+            EvictIdleGetAgg();
+
+            TrimAndAutoScroll(_getIntermittentRows, ListBoxGetIntermittent, addedIntermittent);
+            TrimAndAutoScroll(_logEntriesPost, ListBoxApiLogPost, addedPost);
+        }
+
+        // 파일 로그와 동일한 본문 앞에 시각을 붙인 UI 표시 한 줄. (IP·메서드·경로+쿼리·상태·소요)
+        private static string FormatLogLine(RequestLogInfo info)
+        {
+            string body = $"{info.ClientIp,-15} {info.Method,-6} {info.PathAndQuery,-40} {info.StatusCode}  {info.ElapsedMs}ms";
+            return $"[{info.TimestampLocal:HH:mm:ss}] {body}";
+        }
+
+        // GET 한 건 집계. 시그니처는 'IP + 경로+쿼리'(입력 그대로, 대소문자 구분).
+        // 도착 간격의 규칙성(변동계수)이 작고 충분히 반복되면 '정기'로 승격해 표를 in-place 갱신,
+        // 아니면 '간헐' 목록에 한 줄 추가한다. 반환: 간헐 목록에 줄을 추가했으면 true.
+        private bool ProcessGet(RequestLogInfo info, string line)
+        {
+            string key = info.ClientIp + " " + info.PathAndQuery;
+            DateTime now = info.TimestampLocal;
+
+            if (_getAgg.TryGetValue(key, out var entry))
             {
-                _logEntries.RemoveAt(0);
+                double interval = (now - entry.LastSeen).TotalMilliseconds;
+                if (interval < 0) interval = 0;
+                if (entry.Count == 1)
+                {
+                    entry.EmaInterval = interval;
+                    entry.EmaDev = 0;
+                }
+                else
+                {
+                    double dev = Math.Abs(interval - entry.EmaInterval);
+                    entry.EmaInterval = EmaAlpha * interval + (1 - EmaAlpha) * entry.EmaInterval;
+                    entry.EmaDev = EmaAlpha * dev + (1 - EmaAlpha) * entry.EmaDev;
+                }
+                entry.Count++;
+                entry.LastSeen = now;
+                entry.LastStatus = info.StatusCode;
+
+                double cv = entry.EmaInterval > 0 ? entry.EmaDev / entry.EmaInterval : double.PositiveInfinity;
+                bool regular = entry.Count >= RegularMinCount
+                               && entry.EmaInterval <= RegularMaxPeriodMs
+                               && cv <= RegularMaxCv;
+
+                if (regular)
+                {
+                    if (entry.Row == null)
+                    {
+                        entry.Row = new GetRegularRow(info.ClientIp, info.PathAndQuery);
+                        _getRegularRows.Add(entry.Row);
+                    }
+                    entry.Row.Update(entry.Count, entry.EmaInterval, now, info.StatusCode);
+                    return false; // 정기는 스크롤 줄을 쌓지 않음
+                }
+
+                _getIntermittentRows.Add(line); // 아직 간헐
+                return true;
             }
 
-            // 사용자가 맨 아래에 있을 때만 자동 스크롤 (위로 스크롤해서 과거 로그 확인 중이면 방해하지 않음)
-            if (added && _logEntries.Count > 0 && IsScrolledToBottom(ListBoxApiLog))
+            // 처음 본 요청
+            if (_getAgg.Count >= MaxAggKeys) EvictOldestGetAgg();
+            _getAgg[key] = new GetAggEntry { Count = 1, LastSeen = now, LastStatus = info.StatusCode };
+            _getIntermittentRows.Add(line);
+            return true;
+        }
+
+        // 한동안 안 온 GET 집계를 제거(정기 표 행도 함께) → '현재 살아있는 폴러'만 유지.
+        private void EvictIdleGetAgg()
+        {
+            if (_getAgg.Count == 0) return;
+            DateTime now = DateTime.Now;
+            List<string>? toRemove = null;
+            foreach (var kv in _getAgg)
             {
-                ListBoxApiLog.ScrollIntoView(_logEntries[^1]);
+                double period = kv.Value.EmaInterval > 0 ? kv.Value.EmaInterval : IdleFloorMs;
+                double threshold = Math.Max(IdleFloorMs, IdleFactor * period);
+                if ((now - kv.Value.LastSeen).TotalMilliseconds > threshold)
+                    (toRemove ??= new()).Add(kv.Key);
             }
+            if (toRemove == null) return;
+            foreach (var key in toRemove)
+            {
+                if (_getAgg.TryGetValue(key, out var e) && e.Row != null)
+                    _getRegularRows.Remove(e.Row);
+                _getAgg.Remove(key);
+            }
+        }
+
+        // 집계 키 상한 초과 시 가장 오래 안 본 항목 제거(LRU).
+        private void EvictOldestGetAgg()
+        {
+            string? oldestKey = null;
+            DateTime oldest = DateTime.MaxValue;
+            foreach (var kv in _getAgg)
+                if (kv.Value.LastSeen < oldest) { oldest = kv.Value.LastSeen; oldestKey = kv.Key; }
+            if (oldestKey == null) return;
+            if (_getAgg.TryGetValue(oldestKey, out var e) && e.Row != null)
+                _getRegularRows.Remove(e.Row);
+            _getAgg.Remove(oldestKey);
+        }
+
+        // 최대 줄 수로 자르고, 사용자가 맨 아래에 있을 때만 자동 스크롤한다
+        // (위로 스크롤해서 과거 로그 확인 중이면 방해하지 않음).
+        private void TrimAndAutoScroll(ObservableCollection<string> entries, System.Windows.Controls.ListBox listBox, bool added)
+        {
+            while (entries.Count > MaxLogLines)
+                entries.RemoveAt(0);
+
+            if (added && entries.Count > 0 && IsScrolledToBottom(listBox))
+                listBox.ScrollIntoView(entries[^1]);
+        }
+
+        // GET 시그니처별 집계 상태 (UI 스레드 전용, 락 불필요).
+        private sealed class GetAggEntry
+        {
+            public int Count;
+            public DateTime LastSeen;
+            public int LastStatus;
+            public double EmaInterval;   // 도착 간격 평균(ms)
+            public double EmaDev;        // 도착 간격 편차 평균(ms)
+            public GetRegularRow? Row;   // 정기 승격 시 연결되는 표 행
+        }
+
+        // 정기(주기) GET 표의 한 행. 횟수/주기/마지막/상태가 in-place로 갱신된다.
+        private sealed class GetRegularRow : System.ComponentModel.INotifyPropertyChanged
+        {
+            public string Ip { get; }
+            public string Request { get; }
+            private int _count;
+            private string _period = "";
+            private string _last = "";
+            private int _status;
+
+            public GetRegularRow(string ip, string request) { Ip = ip; Request = request; }
+
+            public int Count { get => _count; private set { _count = value; OnChanged(nameof(Count)); } }
+            public string Period { get => _period; private set { _period = value; OnChanged(nameof(Period)); } }
+            public string Last { get => _last; private set { _last = value; OnChanged(nameof(Last)); } }
+            public int Status { get => _status; private set { _status = value; OnChanged(nameof(Status)); } }
+
+            // 평균 주기를 보기 좋은 단위(ms/s)로 표시.
+            public void Update(int count, double periodMs, DateTime last, int status)
+            {
+                Count = count;
+                Period = periodMs >= 1000 ? $"{periodMs / 1000.0:0.0}s" : $"{periodMs:0}ms";
+                Last = last.ToString("HH:mm:ss");
+                Status = status;
+            }
+
+            public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+            private void OnChanged(string name) =>
+                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
         }
 
         private static bool IsScrolledToBottom(System.Windows.Controls.ListBox listBox)

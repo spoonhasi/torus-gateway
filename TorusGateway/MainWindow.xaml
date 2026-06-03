@@ -59,30 +59,109 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <TextBlock Grid.Row="0" Grid.Column="0" Text="API Request Log" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="4,0,0,4"/>
-            <ListBox Grid.Row="1" Grid.Column="0" x:Name="ListBoxApiLog"
-                     Background="#0C0C0C"
-                     BorderBrush="{StaticResource BorderBrush}"
-                     VirtualizingStackPanel.IsVirtualizing="True"
-                     VirtualizingStackPanel.VirtualizationMode="Recycling"
-                     ScrollViewer.HorizontalScrollBarVisibility="Auto">
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Foreground" Value="#00FF41"/>
-                        <Setter Property="FontFamily" Value="Consolas"/>
-                        <Setter Property="FontSize" Value="11"/>
-                        <Setter Property="Padding" Value="4,1"/>
-                        <Setter Property="Template">
+            <!-- GET(위) / POST(아래) 로그 분리. 가운데 GridSplitter로 높이 조절 -->
+            <Grid Grid.Row="1" Grid.Column="0">
+                <Grid.Resources>
+                    <!-- 두 로그 패널 공용 ListBox 스타일 (콘솔 풍 녹색 모노스페이스) -->
+                    <Style x:Key="LogListBox" TargetType="ListBox">
+                        <Setter Property="Background" Value="#0C0C0C"/>
+                        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                        <Setter Property="VirtualizingStackPanel.IsVirtualizing" Value="True"/>
+                        <Setter Property="VirtualizingStackPanel.VirtualizationMode" Value="Recycling"/>
+                        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+                        <Setter Property="ItemContainerStyle">
                             <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <Border Padding="{TemplateBinding Padding}">
-                                        <ContentPresenter/>
-                                    </Border>
-                                </ControlTemplate>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Foreground" Value="#00FF41"/>
+                                    <Setter Property="FontFamily" Value="Consolas"/>
+                                    <Setter Property="FontSize" Value="11"/>
+                                    <Setter Property="Padding" Value="4,1"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
                             </Setter.Value>
                         </Setter>
                     </Style>
-                </ListBox.ItemContainerStyle>
-            </ListBox>
+                </Grid.Resources>
+                <!-- GET 정기 / GET 간헐 / POST 세 칸을 동일 높이(*)로 두고, 사이를 GridSplitter로 조절 -->
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- GET — 정기(주기): 횟수/주기/마지막 시각을 in-place 갱신 -->
+                <Grid Grid.Row="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="GET — Regular (periodic)" FontSize="11"
+                               Foreground="{StaticResource SecondaryTextBrush}" Margin="4,0,0,2"/>
+                    <ListView Grid.Row="1" x:Name="ListViewGetRegular"
+                              Background="#0C0C0C" BorderBrush="{StaticResource BorderBrush}"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Foreground" Value="#00FF41"/>
+                                <Setter Property="FontFamily" Value="Consolas"/>
+                                <Setter Property="FontSize" Value="11"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="IP" Width="110" DisplayMemberBinding="{Binding Ip}"/>
+                                <GridViewColumn Header="Request" Width="340" DisplayMemberBinding="{Binding Request}"/>
+                                <GridViewColumn Header="Count" Width="60" DisplayMemberBinding="{Binding Count}"/>
+                                <GridViewColumn Header="Period" Width="70" DisplayMemberBinding="{Binding Period}"/>
+                                <GridViewColumn Header="Last" Width="75" DisplayMemberBinding="{Binding Last}"/>
+                                <GridViewColumn Header="Status" Width="55" DisplayMemberBinding="{Binding Status}"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Grid>
+
+                <GridSplitter Grid.Row="1" Height="4" Margin="0,4"
+                              HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                              ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                              Background="{StaticResource BorderBrush}"/>
+
+                <!-- GET — 간헐: 처음 보거나 아직 주기로 승격 안 된 GET이 흐름 -->
+                <Grid Grid.Row="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="GET — Intermittent" FontSize="11"
+                               Foreground="{StaticResource SecondaryTextBrush}" Margin="4,0,0,2"/>
+                    <ListBox Grid.Row="1" x:Name="ListBoxGetIntermittent" Style="{StaticResource LogListBox}"/>
+                </Grid>
+
+                <GridSplitter Grid.Row="3" Height="4" Margin="0,4"
+                              HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                              ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                              Background="{StaticResource BorderBrush}"/>
+
+                <!-- POST (POST 외 메서드도 여기로 모임) -->
+                <Grid Grid.Row="4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="POST" FontSize="11"
+                               Foreground="{StaticResource SecondaryTextBrush}" Margin="4,0,0,2"/>
+                    <ListBox Grid.Row="1" x:Name="ListBoxApiLogPost" Style="{StaticResource LogListBox}"/>
+                </Grid>
+            </Grid>
 
             <!-- IP 지정 패널: 로그 우측에 배치. Visibility 토글 시 로그의 가로 폭만 변하고 세로는 그대로 유지됨 -->
             <Border x:Name="PanelAllowedIPs"

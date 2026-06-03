@@ -90,12 +90,17 @@ namespace TorusGateway.WebServer
         }
     }
 
+    // 미들웨어가 UI로 넘기는 요청 한 건의 구조화 정보.
+    // UI(MainWindow)가 표시 문자열을 만들고 GET 집계(주기성 판정)에 사용한다.
+    public readonly record struct RequestLogInfo(
+        string Method, string ClientIp, string PathAndQuery, int StatusCode, long ElapsedMs, DateTime TimestampLocal);
+
     public class RequestLoggingMiddleware
     {
         private readonly RequestDelegate _next;
 
-        // WPF UI에서 구독할 static 이벤트
-        public static event Action<string>? RequestLogged;
+        // WPF UI에서 구독할 static 이벤트. 요청 한 건의 구조화 정보를 전달한다.
+        public static event Action<RequestLogInfo>? RequestLogged;
 
         public RequestLoggingMiddleware(RequestDelegate next)
         {
@@ -118,13 +123,11 @@ namespace TorusGateway.WebServer
             if (context.Request.Path.StartsWithSegments("/favicon.ico"))
                 return;
 
-            string body = $"{clientIp,-15} {method,-6} {path,-40} {statusCode}  {elapsedMs}ms";
-            string timestamp = DateTime.Now.ToString("HH:mm:ss");
-            string uiEntry = $"[{timestamp}] {body}";
-
-            RequestLogged?.Invoke(uiEntry);
+            // UI는 구조화된 정보로 받아 표시 문자열 생성 + GET 주기성 집계에 사용한다.
+            RequestLogged?.Invoke(new RequestLogInfo(method, clientIp, path, statusCode, elapsedMs, DateTime.Now));
 
             // 4xx/5xx만 파일 로그에 남김 (정상 응답은 UI에만 표시).
+            string body = $"{clientIp,-15} {method,-6} {path,-40} {statusCode}  {elapsedMs}ms";
             if (statusCode >= 500)
                 FileLogger.WriteError(body);
             else if (statusCode >= 400)
