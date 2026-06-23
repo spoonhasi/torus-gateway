@@ -231,6 +231,44 @@ A single value is automatically wrapped into an array (`{ "value": [123.456] }`)
 
 ---
 
+## `GET /machine/channel/variable/variableValue`
+
+위 `GET /machine/channel/variableNumber/variableValue`와 **동작이 완전히 동일**합니다. 쿼리 키만 `variableNumber` → `variable`로 바뀐 신규 경로입니다. 기존 `variableNumber` 경로는 이미 배포되어 있어 호환을 위해 그대로 유지됩니다.
+**Behaves exactly the same** as `GET /machine/channel/variableNumber/variableValue` above. Only the query key changes from `variableNumber` to `variable`. The original `variableNumber` path is kept for backward compatibility since it is already deployed.
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `channel` (int, required): 채널 번호 / channel number
+- `variable` (int, required): 변수 번호 / variable number
+
+**Response example:**
+```json
+{ "status": 0, "value": 123.456 }
+```
+
+---
+
+## `POST /machine/channel/variable/variableValue`
+
+위 `POST /machine/channel/variableNumber/variableValue`와 **동작이 완전히 동일**합니다. 쿼리 키만 `variableNumber` → `variable`로 바뀐 신규 경로입니다.
+**Behaves exactly the same** as `POST /machine/channel/variableNumber/variableValue` above. Only the query key changes from `variableNumber` to `variable`.
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `channel` (int, required): 채널 번호 / channel number
+- `variable` (int, required): 변수 번호 / variable number
+
+**Body:**
+```json
+{ "value": 123.456 }
+```
+단일 값이면 자동으로 배열로 감싸지고(`{ "value": [123.456] }`), `Value`/`VALUE` 키도 `value`로 정규화됩니다.
+A single value is automatically wrapped into an array (`{ "value": [123.456] }`), and `Value`/`VALUE` keys are normalized to `value`.
+
+**Response:** `{ "status": 0 }`
+
+---
+
 ## `GET /machine/ncMemoryRootPath`
 
 지정한 머신의 NC 메모리 루트 경로 조회.

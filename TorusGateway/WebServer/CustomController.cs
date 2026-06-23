@@ -640,6 +640,82 @@ namespace TorusGateway.WebServer
             }
         }
 
+        // GET /machine/channel/variable/variableValue?machine=N&channel=M&variable=N
+        // 위 variableNumber 버전과 동일한 동작. 쿼리 키 'variableNumber'를 'variable'로 바꾼 신규 경로다.
+        // (기존 variableNumber 엔드포인트는 이미 배포되어 있어 호환을 위해 그대로 둔다.)
+        // 클라이언트가 보내는 필터 키가 이미 'variable'이라 별도 치환이 필요 없다.
+        [HttpGet("/machine/channel/variable/variableValue")]
+        public ActionResult<string> GetVariableValueV2()
+        {
+            try
+            {
+                const string address = "data://machine/channel/variable/userVariable";
+                string filter = BuildFilter();
+
+                string getDataResult = Torus.Torus.Instance.GetData(address, filter);
+                return new ContentResult
+                {
+                    Content = TorusController.FilterStatusAndValue(getDataResult),
+                    ContentType = "application/json",
+                    StatusCode = 200
+                };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Variable value read failed");
+                return ErrorResponse(500, "Error occurred while reading variable value");
+            }
+        }
+
+        // POST /machine/channel/variable/variableValue?machine=N&channel=M&variable=N
+        // 위 variableNumber 버전과 동일한 동작. 쿼리 키 'variableNumber'를 'variable'로 바꾼 신규 경로다.
+        // body는 pass-through POST와 동일하게 정규화한다 (Value/VALUE → value, 단일 값 → 배열 래핑).
+        [HttpPost("/machine/channel/variable/variableValue")]
+        public async Task<ActionResult<string>> PostVariableValueV2()
+        {
+            bool bodyParseDone = false;
+            try
+            {
+                const string address = "data://machine/channel/variable/userVariable";
+                string filter = BuildFilter();
+
+                using var reader = new StreamReader(Request.Body);
+                string body = await reader.ReadToEndAsync();
+                body = TorusController.NormalizeValueKey(body);
+                body = TorusController.WrapValueToArray(body);
+                bodyParseDone = true;
+
+                string updateResult = Torus.Torus.Instance.UpdateData(address, filter, body);
+                using var resultDoc = JsonDocument.Parse(updateResult);
+                int status = resultDoc.RootElement.GetProperty("status").GetInt32();
+                if (status != 0)
+                    return TorusErrorResponse(status);
+
+                var response = JsonSerializer.Serialize(new { status = 0 }, TorusController.JsonSerOptions);
+                return new ContentResult { Content = response, ContentType = "application/json", StatusCode = 200 };
+            }
+            catch (JsonException ex)
+            {
+                if (!bodyParseDone)
+                {
+                    _logger.LogWarning(ex, "Invalid JSON in request body");
+                    return ErrorResponse(400, "Invalid JSON in request body");
+                }
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Variable value write failed");
+                return ErrorResponse(500, "Error occurred while writing variable value");
+            }
+        }
+
         // GET /machine/ncMemoryRootPath?machine=N
         [HttpGet("/machine/ncMemoryRootPath")]
         public ActionResult<string> GetNcMemoryRootPath()
