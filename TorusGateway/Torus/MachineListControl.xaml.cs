@@ -98,14 +98,13 @@ namespace TorusGateway.Torus
                 }
                 else if (sender == ButtonTorusRunExecute)
                 {
-                    // 경로 저장 후 호스트에 임베드 실행을 위임 (RunProcess로 직접 띄우지 않음).
-                    SavePath();
-                    TorusRunRequested?.Invoke(this, EventArgs.Empty);
+                    // 콘솔 임베드는 아직 다듬는 중이라 예전처럼 bat를 외부 실행만 한다.
+                    // (임베드 위임용 TorusRunRequested 이벤트는 기능 완성 시 재활성화 예정)
+                    RunProcess(TextBoxTorusRunPath.Text);
                 }
                 else if (sender == ButtonTorusExitExecute)
                 {
-                    SavePath();
-                    TorusExitRequested?.Invoke(this, EventArgs.Empty);
+                    RunProcess(TextBoxTorusExitPath.Text);
                 }
                 else if (sender == ButtonTorusMachineListRead)
                 {

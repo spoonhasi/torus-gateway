@@ -23,7 +23,7 @@ namespace TorusGateway.Torus
     internal sealed class ConsoleEmbedder
     {
         private const string ConsoleWindowClass = "ConsoleWindowClass";
-        private const int CaptureTimeoutMs = 5000;   // 콘솔 창 HWND 캡처 최대 대기
+        private const int CaptureTimeoutMs = 15000;  // 콘솔 창 HWND 캡처 최대 대기(TORUS 초기화 부하로 지연 가능)
         private const int CapturePollMs = 50;
         private const int MaxConsoles = 8;            // 안전 상한(매니저 개수는 bat에서 동적 결정)
 
@@ -191,7 +191,9 @@ namespace TorusGateway.Torus
                 return 0;
             }
 
-            int embedded = 0;
+            // 1단계: 매니저 conhost들을 먼저 모두 띄운다.
+            // 병렬 기동이라 뒤 슬롯이 앞 슬롯의 캡처 완료를 기다리지 않는다(순차 캡처 시 3번째가 타임아웃 나던 문제 해소).
+            var launched = new List<(int Slot, string ExeName, Process Host, WinFormsPanel Panel)>();
             for (int i = 0; i < count; i++)
             {
                 int slot = i;
@@ -232,17 +234,39 @@ namespace TorusGateway.Torus
                     continue;
                 }
 
-                IntPtr hwnd = await CaptureConsoleHwndAsync((uint)host.Id);
-                if (hwnd == IntPtr.Zero)
-                {
-                    onError?.Invoke($"Could not capture console window for {exeName}.");
-                    continue;
-                }
-
-                Embed(hwnd, panel);
-                _slots[slot] = new SlotState { ExeName = exeName, Host = host, ConhostPid = (uint)host.Id, Hwnd = hwnd, Panel = panel, Embedded = true };
-                embedded++;
+                launched.Add((slot, exeName, host, panel));
             }
+
+            // 2단계: 공유 데드라인으로 모든 콘솔 창을 폴링 캡처한다.
+            // 콘솔은 "conhost의 자식 프로세스 이름"으로 매칭한다(host.Id가 콘솔을 직접 소유하지 않는
+            // 매니저도 잡기 위함 — mgrCommand가 이 경우였다). 소유 conhost PID는 창에서 되읽어 기록한다
+            // (재부착 세션 일관성). 매니저 기동/초기화 부하로 지연될 수 있어 CaptureTimeoutMs만큼 대기.
+            int embedded = 0;
+            var pending = new List<(int Slot, string ExeName, Process Host, WinFormsPanel Panel)>(launched);
+            int waited = 0;
+            while (pending.Count > 0)
+            {
+                var consoles = FindExistingManagerConsoles(pending.Select(p => p.ExeName), null);
+                for (int k = pending.Count - 1; k >= 0; k--)
+                {
+                    var li = pending[k];
+                    string key = (Path.GetFileName(li.ExeName) ?? "").ToLowerInvariant();
+                    if (!consoles.TryGetValue(key, out var hwnd) || !IsWindow(hwnd)) continue;
+
+                    GetWindowThreadProcessId(hwnd, out uint conhostPid); // 실제 콘솔 소유 conhost
+                    Embed(hwnd, li.Panel);
+                    _slots[li.Slot] = new SlotState { ExeName = li.ExeName, Host = li.Host, ConhostPid = conhostPid, Hwnd = hwnd, Panel = li.Panel, Embedded = true };
+                    embedded++;
+                    pending.RemoveAt(k);
+                }
+                if (pending.Count == 0 || waited >= CaptureTimeoutMs) break;
+                await Task.Delay(CapturePollMs);
+                waited += CapturePollMs;
+            }
+
+            foreach (var li in pending)
+                onError?.Invoke($"Could not capture console window for {li.ExeName}.");
+
             if (embedded > 0) SaveSession();
             return embedded;
         }
@@ -360,14 +384,25 @@ namespace TorusGateway.Torus
             }
         }
 
-        // 콘솔 탭이 화면에 다시 보이게 될 때 1회 호출 — conhost 뷰포트 전체를 강제로 다시 그린다.
-        // Visibility 토글만으로는 WM_PAINT가 안 가 이전에 그린 영역만 남는 문제(빈/잔상 화면)를 해소한다.
-        // 비용은 "보이는 뷰포트" 렌더 1회로, 스크롤백 누적량과 무관하게 상수다.
+        // 콘솔 탭이 화면에 다시 보이게 될 때 1회 호출 — conhost가 뷰포트 전체를 다시 그리게 강제한다.
+        // conhost는 WM_PAINT 무효화(RedrawWindow)만으론 클라이언트 영역을 다시 안 그리고, 크기 변경(WM_SIZE)에
+        // 반응해 다시 그린다(창 리사이즈/스크롤로만 갱신되던 원인). 그래서 패널 크기로 1px 줄였다 되돌려
+        // 리사이즈-리페인트를 강제한다. 비용은 뷰포트 렌더 1회로 스크롤백 누적량과 무관하게 상수다.
         public void ForceRedraw(int slot)
         {
-            if (_slots.TryGetValue(slot, out var s) && s.Embedded && IsWindow(s.Hwnd))
-                RedrawWindow(s.Hwnd, IntPtr.Zero, IntPtr.Zero,
-                    RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+            if (!_slots.TryGetValue(slot, out var s) || !s.Embedded || !IsWindow(s.Hwnd)) return;
+
+            if (s.Panel != null)
+            {
+                var size = s.Panel.ClientSize;
+                if (size.Width > 1 && size.Height > 1)
+                {
+                    MoveWindow(s.Hwnd, 0, 0, size.Width - 1, size.Height, false);
+                    MoveWindow(s.Hwnd, 0, 0, size.Width, size.Height, true);
+                }
+            }
+            RedrawWindow(s.Hwnd, IntPtr.Zero, IntPtr.Zero,
+                RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
         }
 
         // ── 종료/재시작 직전: 콘솔을 부모에서 떼어 우리 HWND와 함께 파괴되지 않게 한다 ──
@@ -395,57 +430,31 @@ namespace TorusGateway.Torus
 
         // ── 내부 구현 ──
 
-        private async Task<IntPtr> CaptureConsoleHwndAsync(uint conhostPid)
-        {
-            int waited = 0;
-            while (waited < CaptureTimeoutMs)
-            {
-                IntPtr found = FindConsoleByPid(conhostPid);
-                if (found != IntPtr.Zero) return found;
-                await Task.Delay(CapturePollMs);
-                waited += CapturePollMs;
-            }
-            return IntPtr.Zero;
-        }
-
-        // 지정 PID(conhost)가 소유한 ConsoleWindowClass 최상위 창을 찾는다.
-        private static IntPtr FindConsoleByPid(uint pid)
-        {
-            IntPtr result = IntPtr.Zero;
-            EnumWindows((h, _) =>
-            {
-                GetWindowThreadProcessId(h, out uint wp);
-                if (wp == pid && GetClassNameStr(h) == ConsoleWindowClass)
-                {
-                    result = h;
-                    return false; // 중단
-                }
-                return true;
-            }, IntPtr.Zero);
-            return result;
-        }
-
-        // 이미 떠 있는 매니저 콘솔을 (exe 이름 → 콘솔 HWND)로 매핑.
+        // 매니저 콘솔을 (exe 이름 → 콘솔 HWND)로 매핑.
         // 콘솔 창은 conhost가 소유하고, 매니저 exe는 그 conhost의 자식이다.
-        // allowedConhostPids에 들어있는 conhost(= 우리가 띄운 것)만 대상으로 한다.
+        // 이 "자식 프로세스 이름" 기준 매칭은, 우리가 직접 띄운 conhost(host.Id)가 콘솔을 직접
+        // 소유하지 않는 매니저(재호스팅으로 소유 conhost PID가 달라지는 경우)도 견고하게 찾는다.
+        // allowedConhostPids != null이면 그 conhost(= 우리가 띄운 것)만 대상으로 좁힌다(재부착용).
+        // null이면 이름만으로 매칭한다(신규 실행 캡처용 — 외부 인스턴스는 중복 실행 가드로 이미 배제됨).
         private static Dictionary<string, IntPtr> FindExistingManagerConsoles(
-            IEnumerable<string> exeNames, HashSet<uint> allowedConhostPids)
+            IEnumerable<string> exeNames, HashSet<uint>? allowedConhostPids)
         {
             // 프로세스 이미지명과 비교하므로 파일명만 소문자로 추린다(경로/중복 제거).
             var wanted = new HashSet<string>(exeNames.Select(n => (Path.GetFileName(n) ?? "").ToLowerInvariant()));
             var result = new Dictionary<string, IntPtr>();
-            if (wanted.Count == 0 || allowedConhostPids.Count == 0) return result;
+            if (wanted.Count == 0) return result;
 
             var procs = SnapshotProcesses(); // pid → (이름소문자, 부모pid)
 
-            // ConsoleWindowClass 창 중 "우리가 띄운" conhost가 소유한 것만 수집.
+            // ConsoleWindowClass 창을 conhost PID로 수집. allowed가 주어지면 그 집합으로 제한.
             var consoleByPid = new Dictionary<uint, IntPtr>();
             EnumWindows((h, _) =>
             {
                 if (GetClassNameStr(h) == ConsoleWindowClass)
                 {
                     GetWindowThreadProcessId(h, out uint wp);
-                    if (wp != 0 && allowedConhostPids.Contains(wp) && !consoleByPid.ContainsKey(wp))
+                    if (wp != 0 && (allowedConhostPids == null || allowedConhostPids.Contains(wp))
+                        && !consoleByPid.ContainsKey(wp))
                         consoleByPid[wp] = h;
                 }
                 return true;

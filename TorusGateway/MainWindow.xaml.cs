@@ -186,6 +186,10 @@ namespace TorusGateway
 
         private void MainWindow_Loaded(object? sender, RoutedEventArgs e)
         {
+            // 콘솔 임베드 기능은 아직 다듬는 중이라 시작 시 자동 재부착을 비활성화한다.
+            // Run은 예전처럼 bat 외부 실행만 하므로 임베드/재부착이 일어나지 않는다. (기능 완성 시 아래 복원)
+            return;
+#pragma warning disable CS0162 // 의도적으로 비활성화된 재부착 경로(기능 완성 시 복원)
             // 게이트웨이가 띄운 콘솔 기록이 있을 때만 재부착 시도(사용자가 직접 띄운 TORUS는 건드리지 않음).
             if (!_embedder.HasReattachableSession()) return;
             string runPath = ConfigManager.Read(ConfigFile, "Main", "TorusRunPath", "");
@@ -197,6 +201,7 @@ namespace TorusGateway
                 MainTabs.SelectedIndex = 1; // 첫 콘솔 탭으로
             else
                 BuildConsoleTabs(Array.Empty<string>()); // 재부착할 게 없으면 빈 콘솔 탭 제거
+#pragma warning restore CS0162
         }
 
         // TORUS Settings의 Run 버튼 → bat 개수만큼 탭 생성 후 매니저를 conhost로 띄워 임베드.
