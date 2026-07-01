@@ -716,6 +716,96 @@ namespace TorusGateway.WebServer
             }
         }
 
+        // ── PLC 신호 값 조회 ──
+        // plcAddress/plcType/plcValue 쿼리를 TORUS plcsignal 필터로 변환하는 순수 헬퍼(테스트 대상).
+        // 변환 규칙:
+        //   - plcType   → type
+        //   - plcAddress→ start/end. '~' 없으면 start=end=주소, 'A~B'면 start=A, end=B.
+        //   - 그 외 키(machine 등)는 소문자로 그대로 통과.
+        // 예) machine=2&plcAddress=D0015&plcType=0        → machine=2&type=0&start=D0015&end=D0015
+        //     machine=2&plcAddress=D0015~D0016&plcType=0  → machine=2&type=0&start=D0015&end=D0016
+        // 잘못된 입력은 ArgumentException(메시지)로 던진다. 호출부가 400으로 매핑.
+        internal static string BuildPlcSignalFilter(IEnumerable<KeyValuePair<string, string>> query)
+        {
+            var parts = new List<string>();
+            string? start = null, end = null;
+            bool hasAddress = false;
+
+            foreach (var p in query)
+            {
+                string key = (p.Key ?? "").ToLowerInvariant();
+                string val = p.Value ?? "";
+
+                if (key == "plcaddress")
+                {
+                    hasAddress = true;
+                    var seg = val.Split('~');
+                    if (seg.Length == 1) { start = seg[0].Trim(); end = start; }
+                    else if (seg.Length == 2) { start = seg[0].Trim(); end = seg[1].Trim(); }
+                    else throw new ArgumentException("'plcAddress' range must be 'START~END'");
+
+                    if (start.Length == 0 || end.Length == 0)
+                        throw new ArgumentException("'plcAddress' is empty");
+                }
+                else if (key == "plctype")
+                {
+                    parts.Add("type=" + val);
+                }
+                else
+                {
+                    parts.Add(key + "=" + val);
+                }
+            }
+
+            if (!hasAddress)
+                throw new ArgumentException("'plcAddress' parameter is required");
+
+            parts.Add("start=" + start);
+            parts.Add("end=" + end);
+            return string.Join("&", parts);
+        }
+
+        // GET /machine/plcAddress/plcType/plcValue?machine=N&plcAddress=D0015[~D0016]&plcType=0
+        // PLC 신호 값 조회. 내부적으로 data://machine/plc/plcsignal를 사용하며,
+        // 쿼리를 BuildPlcSignalFilter로 변환(plcType→type, plcAddress→start/end)해 전달한다.
+        [HttpGet("/machine/plcAddress/plcType/plcValue")]
+        public ActionResult<string> GetPlcValue()
+        {
+            string filter;
+            try
+            {
+                filter = BuildPlcSignalFilter(
+                    HttpContext.Request.Query.Select(
+                        p => new KeyValuePair<string, string>(p.Key, p.Value.ToString())));
+            }
+            catch (ArgumentException ex)
+            {
+                return ErrorResponse(400, ex.Message);
+            }
+
+            try
+            {
+                const string address = "data://machine/plc/plcsignal";
+                string getDataResult = Torus.Torus.Instance.GetData(address, filter);
+                return new ContentResult
+                {
+                    Content = TorusController.FilterStatusAndValue(getDataResult),
+                    ContentType = "application/json",
+                    StatusCode = 200
+                };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "PLC value read failed");
+                return ErrorResponse(500, "Error occurred while reading PLC value");
+            }
+        }
+
         // GET /machine/ncMemoryRootPath?machine=N
         [HttpGet("/machine/ncMemoryRootPath")]
         public ActionResult<string> GetNcMemoryRootPath()

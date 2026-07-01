@@ -269,6 +269,33 @@ A single value is automatically wrapped into an array (`{ "value": [123.456] }`)
 
 ---
 
+## `GET /machine/plcAddress/plcType/plcValue`
+
+지정한 머신의 PLC 신호 값 조회. 단일 주소 또는 `~`로 구분한 주소 범위를 지원합니다.
+Reads PLC signal values for the specified machine. Supports a single address or an address range separated by `~`.
+
+내부적으로 `data://machine/plc/plcsignal`를 사용하며, 쿼리를 다음 규칙으로 변환해 전달합니다:
+Internally uses `data://machine/plc/plcsignal`; the query is translated with these rules:
+- `plcType` → `type`
+- `plcAddress` → `start`/`end`: `~`가 없으면 `start=end=주소`, `A~B`면 `start=A`·`end=B`. / without `~`, `start=end=address`; for `A~B`, `start=A` and `end=B`.
+- 그 외 키(`machine` 등)는 소문자로 그대로 전달. / other keys (e.g. `machine`) pass through, lowercased.
+
+예 / Examples:
+- `?machine=2&plcAddress=D0015&plcType=0` → `machine=2&type=0&start=D0015&end=D0015`
+- `?machine=2&plcAddress=D0015~D0016&plcType=0` → `machine=2&type=0&start=D0015&end=D0016`
+
+**Query parameters:**
+- `machine` (int, required): 머신 ID / machine ID
+- `plcAddress` (string, required): PLC 주소 또는 `시작~끝` 범위 / PLC address or `start~end` range
+- `plcType` (int, required): PLC 신호 타입 / PLC signal type
+
+**Response example:**
+```json
+{ "status": 0, "value": [0, 1] }
+```
+
+---
+
 ## `GET /machine/ncMemoryRootPath`
 
 지정한 머신의 NC 메모리 루트 경로 조회.
