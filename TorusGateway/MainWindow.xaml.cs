@@ -25,6 +25,11 @@ namespace TorusGateway
         private bool _torusConnectFailed = false; // Initialize 후 Connect 실패 여부
         private int _modalDepth = 0; // 모달 창(Settings, Docs 등) 표시 중인 개수
 
+        // TORUS 콘솔 임베드. 매니저 개수만큼 패널/호스트를 만들어 ConsoleHostGrid에 겹쳐 두고 Visibility로 전환.
+        private readonly List<System.Windows.Forms.Panel> _consolePanels = new();
+        private readonly List<System.Windows.Forms.Integration.WindowsFormsHost> _consoleHosts = new();
+        private readonly ConsoleEmbedder _embedder = new();
+
         private const int MaxLogLines = 1000;
         // 미들웨어 스레드 → UI 스레드(flush)로 넘기는 요청 큐.
         private readonly ConcurrentQueue<RequestLogInfo> _logQueue = new();
@@ -68,6 +73,9 @@ namespace TorusGateway
             ListBoxApiLogPost.ItemsSource = _logEntriesPost;
             RequestLoggingMiddleware.RequestLogged += OnRequestLogged;
 
+            // 시작 시 게이트웨이가 띄운 TORUS 콘솔 기록이 있으면 다시 임베드(재시작/재연결 흐름 대비).
+            this.Loaded += MainWindow_Loaded;
+
             // 200ms 간격으로 로그 배치 갱신 (Dispatcher 큐 과적 방지)
             _logTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
             _logTimer.Tick += FlushLogQueue;
@@ -96,6 +104,136 @@ namespace TorusGateway
                 this.Loaded += (s, e) => ButtonTorusConnect.RaiseEvent(
                     new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, ButtonTorusConnect));
             }
+        }
+
+        // bat의 활성 매니저 개수만큼 상단 탭 헤더(MainTabs)와 콘솔 호스트(ConsoleHostGrid)를 동적 생성한다.
+        // 호스트는 모두 항상 트리에 두고 Visibility로만 전환 → 탭을 바꿔도 콘솔 HWND가 파괴되지 않는다.
+        private void BuildConsoleTabs(IReadOnlyList<string> managerNames)
+        {
+            // 기존 콘솔 탭 헤더 제거 (index 0 = "API Log"는 유지).
+            while (MainTabs.Items.Count > 1)
+                MainTabs.Items.RemoveAt(MainTabs.Items.Count - 1);
+            // 기존 호스트 정리(이 시점엔 임베드된 콘솔이 없음 — 호출부에서 보장).
+            foreach (var h in _consoleHosts)
+            {
+                try { h.Dispose(); } catch { }
+            }
+            ConsoleHostGrid.Children.Clear();
+            _consoleHosts.Clear();
+            _consolePanels.Clear();
+
+            for (int i = 0; i < managerNames.Count; i++)
+            {
+                var panel = MakeConsolePanel();
+                var host = new System.Windows.Forms.Integration.WindowsFormsHost { Child = panel };
+                ConsoleHostGrid.Children.Add(host);
+                _consoleHosts.Add(host);
+                _consolePanels.Add(panel);
+
+                MainTabs.Items.Add(new System.Windows.Controls.TabItem { Header = FriendlyName(managerNames[i]) });
+
+                int idx = i;
+                panel.SizeChanged += (_, _) => _embedder.OnHostResized(idx, panel);
+            }
+
+            // 모든 호스트 핸들을 미리 생성해 임베드 대상(panel.Handle)이 유효하도록 한다.
+            if (managerNames.Count > 0)
+            {
+                ConsoleHostGrid.Visibility = Visibility.Visible;
+                UpdateLayout();
+                foreach (var p in _consolePanels) { try { _ = p.Handle; } catch { } }
+            }
+            UpdateContentVisibility();
+        }
+
+        private static System.Windows.Forms.Panel MakeConsolePanel() => new()
+        {
+            BackColor = System.Drawing.Color.Black,
+            Dock = System.Windows.Forms.DockStyle.Fill
+        };
+
+        // 탭 라벨: exe 이름에서 유도. mgrApplication.exe → "Application", mgrCommand.exe → "Command".
+        private static string FriendlyName(string exeName)
+        {
+            string n = System.IO.Path.GetFileNameWithoutExtension(exeName);
+            if (n.StartsWith("mgr", StringComparison.OrdinalIgnoreCase) && n.Length > 3)
+                n = n.Substring(3);
+            return string.IsNullOrEmpty(n) ? exeName : n;
+        }
+
+        private void MainTabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (e.OriginalSource is not System.Windows.Controls.TabControl) return; // 하위 컨트롤 이벤트 무시
+            UpdateContentVisibility();
+        }
+
+        // 선택된 탭에 따라 로그/콘솔 표시 전환. 콘텐츠는 항상 트리에 있고 Visibility만 바꾼다(HWND 보존).
+        private void UpdateContentVisibility()
+        {
+            if (LogArea == null || ConsoleHostGrid == null) return; // InitializeComponent 중 호출 대비
+            int idx = MainTabs.SelectedIndex; // 0 = API Log, 1.. = 콘솔
+            bool consoleSelected = idx >= 1 && idx - 1 < _consoleHosts.Count;
+            LogArea.Visibility = consoleSelected ? Visibility.Collapsed : Visibility.Visible;
+            ConsoleHostGrid.Visibility = consoleSelected ? Visibility.Visible : Visibility.Collapsed;
+            for (int i = 0; i < _consoleHosts.Count; i++)
+                _consoleHosts[i].Visibility = (consoleSelected && i == idx - 1) ? Visibility.Visible : Visibility.Collapsed;
+
+            // 콘솔이 막 보이게 됐으면 강제로 다시 그린다 — Visibility 토글만으론 WM_PAINT가 안 가
+            // 이전에 그린 영역만 남는(빈/잔상) 문제를 막는다. 뷰포트 1회 렌더라 누적량과 무관하게 저렴.
+            if (consoleSelected)
+                _embedder.ForceRedraw(idx - 1);
+        }
+
+        private void MainWindow_Loaded(object? sender, RoutedEventArgs e)
+        {
+            // 게이트웨이가 띄운 콘솔 기록이 있을 때만 재부착 시도(사용자가 직접 띄운 TORUS는 건드리지 않음).
+            if (!_embedder.HasReattachableSession()) return;
+            string runPath = ConfigManager.Read(ConfigFile, "Main", "TorusRunPath", "");
+            var names = _embedder.GetManagerNames(runPath);
+            if (names.Count == 0) return;
+
+            BuildConsoleTabs(names);
+            if (_embedder.TryReattach(runPath, _consolePanels))
+                MainTabs.SelectedIndex = 1; // 첫 콘솔 탭으로
+            else
+                BuildConsoleTabs(Array.Empty<string>()); // 재부착할 게 없으면 빈 콘솔 탭 제거
+        }
+
+        // TORUS Settings의 Run 버튼 → bat 개수만큼 탭 생성 후 매니저를 conhost로 띄워 임베드.
+        private async void OnTorusRunRequested(object? sender, EventArgs e)
+        {
+            // 이미 임베드돼 있으면 탭 재생성 없이 콘솔 탭으로만 전환(재생성은 기존 콘솔을 파괴함).
+            if (_embedder.HasEmbedded)
+            {
+                if (MainTabs.Items.Count > 1) MainTabs.SelectedIndex = 1;
+                return;
+            }
+
+            string runPath = ConfigManager.Read(ConfigFile, "Main", "TorusRunPath", "");
+            var names = _embedder.GetManagerNames(runPath);
+            if (names.Count == 0)
+            {
+                MessageBox.Show(this, "No managers found in the TORUS run script.",
+                    "TORUS Console", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            BuildConsoleTabs(names);
+            int embedded = await _embedder.LaunchAndEmbedAsync(runPath, _consolePanels,
+                msg => MessageBox.Show(this, msg, "TORUS Console", MessageBoxButton.OK, MessageBoxImage.Warning));
+            if (embedded > 0)
+                MainTabs.SelectedIndex = 1; // 첫 콘솔 탭으로
+            else
+                BuildConsoleTabs(Array.Empty<string>()); // 임베드 못 했으면 빈 콘솔 탭 제거
+        }
+
+        // TORUS Settings의 Exit 버튼 → 매니저(콘솔) 종료 + 콘솔 탭 제거.
+        private void OnTorusExitRequested(object? sender, EventArgs e)
+        {
+            string runPath = ConfigManager.Read(ConfigFile, "Main", "TorusRunPath", "");
+            _embedder.ExitManagers(runPath);
+            BuildConsoleTabs(Array.Empty<string>());
+            MainTabs.SelectedIndex = 0;
         }
 
         // 미들웨어 스레드에서 호출 — ConcurrentQueue로 lock 없이 적재. 집계는 UI 스레드 flush에서 처리.
@@ -380,6 +518,8 @@ namespace TorusGateway
                 }
             }
             catch { }
+            // 게이트웨이가 띄운(임베드한) TORUS가 있으면 함께 종료. (사용자가 직접 띄운 것은 추적되지 않아 안 건드림)
+            _embedder.KillEmbeddedManagers();
             Environment.Exit(0);
         }
 
@@ -397,6 +537,8 @@ namespace TorusGateway
                 }
             }
             catch { }
+            // 임베드된 콘솔을 부모에서 떼어 둔다(재시작된 프로세스가 다시 재부착).
+            _embedder.DetachAllForShutdown();
             // 새 프로세스 시작 후 현재 프로세스 강제 종료 (네이티브 DLL 포함 완전 해제)
             var args = autoConnect ? "--auto-connect" : "";
             System.Diagnostics.Process.Start(Environment.ProcessPath!, args);
@@ -641,9 +783,17 @@ namespace TorusGateway
             {
                 var settingWindow = new Torus.MachineListWindow();
                 settingWindow.Owner = this;
+                // Run/Exit 버튼은 콘솔 임베드를 호스트(MainWindow)에 위임 → 이벤트 구독.
+                settingWindow.MachineListControlInstance.TorusRunRequested += OnTorusRunRequested;
+                settingWindow.MachineListControlInstance.TorusExitRequested += OnTorusExitRequested;
                 _modalDepth++;
                 try { settingWindow.ShowDialog(); }
-                finally { _modalDepth--; }
+                finally
+                {
+                    _modalDepth--;
+                    settingWindow.MachineListControlInstance.TorusRunRequested -= OnTorusRunRequested;
+                    settingWindow.MachineListControlInstance.TorusExitRequested -= OnTorusExitRequested;
+                }
             }
             else if (sender == ButtonAbout)//About 정보 표시
             {

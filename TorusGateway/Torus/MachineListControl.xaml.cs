@@ -33,6 +33,12 @@ namespace TorusGateway.Torus
         private ObservableCollection<NCmachine> ncMachineList_ { get; set; } = [];
 
         public string ConfigFilePath { get; set; } = "config.ini";
+
+        // TORUS Run/Exit 버튼은 더 이상 자체적으로 콘솔을 띄우지 않고, 호스트(MainWindow)가
+        // 콘솔을 메인 창에 임베드하도록 이벤트만 발행한다. (콘솔 임베드 패널은 MainWindow에 있음)
+        public event EventHandler? TorusRunRequested;
+        public event EventHandler? TorusExitRequested;
+
         public MachineListControl()
         {
             InitializeComponent();
@@ -92,11 +98,14 @@ namespace TorusGateway.Torus
                 }
                 else if (sender == ButtonTorusRunExecute)
                 {
-                    RunProcess(TextBoxTorusRunPath.Text);
+                    // 경로 저장 후 호스트에 임베드 실행을 위임 (RunProcess로 직접 띄우지 않음).
+                    SavePath();
+                    TorusRunRequested?.Invoke(this, EventArgs.Empty);
                 }
                 else if (sender == ButtonTorusExitExecute)
                 {
-                    RunProcess(TextBoxTorusExitPath.Text);
+                    SavePath();
+                    TorusExitRequested?.Invoke(this, EventArgs.Empty);
                 }
                 else if (sender == ButtonTorusMachineListRead)
                 {
