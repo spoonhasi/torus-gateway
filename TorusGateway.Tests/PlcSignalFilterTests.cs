@@ -34,13 +34,30 @@ public class PlcSignalFilterTests
         Assert.Equal("machine=2&type=0&start=D0015&end=D0016", filter);
     }
 
-    // plcType → type, plcAddress → start/end 로 키가 치환된다.
+    // plcType → type 로 키가 치환된다(값 매핑 표에 없는 값은 그대로).
     [Fact]
-    public void Translates_plctype_to_type()
+    public void Translates_plctype_key_to_type()
     {
         var filter = CustomController.BuildPlcSignalFilter(
-            Q(("plcType", "3"), ("plcAddress", "M100")));
-        Assert.Equal("type=3&start=M100&end=M100", filter);
+            Q(("plcType", "1"), ("plcAddress", "M100")));
+        Assert.Equal("type=1&start=M100&end=M100", filter);
+    }
+
+    // plcType 값 매핑: 2→0, 3→1, 4→2, 5→4, 6→5. 표에 없는 값(0/1/7 등)은 그대로 통과.
+    [Theory]
+    [InlineData("0", "0")]
+    [InlineData("1", "1")]
+    [InlineData("2", "0")]
+    [InlineData("3", "1")]
+    [InlineData("4", "2")]
+    [InlineData("5", "4")]
+    [InlineData("6", "5")]
+    [InlineData("7", "7")]
+    public void Maps_plctype_value(string input, string expected)
+    {
+        var filter = CustomController.BuildPlcSignalFilter(
+            Q(("plcType", input), ("plcAddress", "D0015")));
+        Assert.Equal($"type={expected}&start=D0015&end=D0015", filter);
     }
 
     // 쿼리 키는 대소문자 무관.

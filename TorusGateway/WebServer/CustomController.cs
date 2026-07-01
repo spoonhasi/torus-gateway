@@ -749,7 +749,7 @@ namespace TorusGateway.WebServer
                 }
                 else if (key == "plctype")
                 {
-                    parts.Add("type=" + val);
+                    parts.Add("type=" + MapPlcType(val));
                 }
                 else
                 {
@@ -764,6 +764,18 @@ namespace TorusGateway.WebServer
             parts.Add("end=" + end);
             return string.Join("&", parts);
         }
+
+        // plcType 입력값을 TORUS type 값으로 보정한다. 표에 없는 값(0/1 등)은 그대로 통과.
+        //   2→0, 3→1, 4→2, 5→4, 6→5
+        private static string MapPlcType(string val) => val.Trim() switch
+        {
+            "2" => "0",
+            "3" => "1",
+            "4" => "2",
+            "5" => "4",
+            "6" => "5",
+            _ => val,
+        };
 
         // GET /machine/plcAddress/plcType/plcValue?machine=N&plcAddress=D0015[~D0016]&plcType=0
         // PLC 신호 값 조회. 내부적으로 data://machine/plc/plcsignal를 사용하며,
@@ -787,9 +799,11 @@ namespace TorusGateway.WebServer
             {
                 const string address = "data://machine/plc/plcsignal";
                 string getDataResult = Torus.Torus.Instance.GetData(address, filter);
+                // plcsignal은 datatype이 list라 기본은 배열 유지되지만, 단건 조회 편의를 위해
+                // 원소 1개면 배열을 해제한다(ignoreListType). 범위(2개 이상)는 배열 유지.
                 return new ContentResult
                 {
-                    Content = TorusController.FilterStatusAndValue(getDataResult),
+                    Content = TorusController.FilterStatusAndValue(getDataResult, ignoreListType: true),
                     ContentType = "application/json",
                     StatusCode = 200
                 };

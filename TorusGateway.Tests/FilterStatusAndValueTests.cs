@@ -72,6 +72,22 @@ public class FilterStatusAndValueTests
     }
 
     [Fact]
+    public void IgnoreListType_unwraps_singleton_array_even_with_list_datatype()
+    {
+        string result = TorusController.FilterStatusAndValue(
+            "{\"status\":0,\"value\":[4],\"datatype\":\"list-int\"}", ignoreListType: true);
+        Assert.Equal("{\"status\":0,\"value\":4}", result);
+    }
+
+    [Fact]
+    public void IgnoreListType_keeps_array_when_length_gt_1()
+    {
+        string result = TorusController.FilterStatusAndValue(
+            "{\"status\":0,\"value\":[4,5],\"datatype\":\"list-int\"}", ignoreListType: true);
+        Assert.Equal("{\"status\":0,\"value\":[4,5]}", result);
+    }
+
+    [Fact]
     public void Preserves_korean_characters_without_escape()
     {
         string result = TorusController.FilterStatusAndValue("{\"status\":0,\"value\":[\"메인제어기\"]}");

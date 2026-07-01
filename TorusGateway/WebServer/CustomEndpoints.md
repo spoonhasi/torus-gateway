@@ -276,7 +276,7 @@ Reads PLC signal values for the specified machine. Supports a single address or 
 
 내부적으로 `data://machine/plc/plcsignal`를 사용하며, 쿼리를 다음 규칙으로 변환해 전달합니다:
 Internally uses `data://machine/plc/plcsignal`; the query is translated with these rules:
-- `plcType` → `type`
+- `plcType` → `type` (값 매핑: `2→0`, `3→1`, `4→2`, `5→4`, `6→5`. 표에 없는 값은 그대로) / key `plcType` → `type`, with value mapping `2→0`, `3→1`, `4→2`, `5→4`, `6→5` (unmapped values pass through).
 - `plcAddress` → `start`/`end`: `~`가 없으면 `start=end=주소`, `A~B`면 `start=A`·`end=B`. / without `~`, `start=end=address`; for `A~B`, `start=A` and `end=B`.
 - 그 외 키(`machine` 등)는 소문자로 그대로 전달. / other keys (e.g. `machine`) pass through, lowercased.
 
@@ -290,8 +290,13 @@ Internally uses `data://machine/plc/plcsignal`; the query is translated with the
 - `plcType` (int, required): PLC 신호 타입 / PLC signal type
 
 **Response example:**
+
+단건(원소 1개)은 배열을 해제해 단일 값으로 반환하고, 범위(2개 이상)는 배열로 반환합니다.
+A single result (one element) is unwrapped to a scalar; a range (two or more) is returned as an array.
+
 ```json
-{ "status": 0, "value": [0, 1] }
+{ "status": 0, "value": 4 }
+{ "status": 0, "value": [4, 5] }
 ```
 
 ---

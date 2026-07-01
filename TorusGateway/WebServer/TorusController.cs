@@ -92,7 +92,8 @@ namespace TorusGateway.WebServer
         // 추가로 value가 길이 1짜리 배열이면 배열을 해제해 단일 값으로 만든다.
         // 단, datatype 키 값에 "list"가 포함되어 있으면 배열을 유지한다 (빈 리스트/단일원소 리스트 구분용).
         // unwrapSingletonArray=false를 넘기면 datatype 여부와 무관하게 배열을 항상 유지한다.
-        internal static string FilterStatusAndValue(string json, bool unwrapSingletonArray = true)
+        // ignoreListType=true를 넘기면 datatype이 list여도 단일 원소 배열을 해제한다 (예: PLC 신호 단건 조회).
+        internal static string FilterStatusAndValue(string json, bool unwrapSingletonArray = true, bool ignoreListType = false)
         {
             using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.ValueKind != JsonValueKind.Object)
@@ -125,7 +126,7 @@ namespace TorusGateway.WebServer
             {
                 writer.WritePropertyName("value");
                 if (unwrapSingletonArray
-                    && !isListType
+                    && (!isListType || ignoreListType)
                     && valueProp.ValueKind == JsonValueKind.Array
                     && valueProp.GetArrayLength() == 1)
                 {
