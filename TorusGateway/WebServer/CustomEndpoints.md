@@ -289,6 +289,17 @@ Internally uses `data://machine/plc/plcsignal`; the query is translated with the
 - `plcAddress` (string, required): PLC 주소 또는 `시작~끝` 범위 / PLC address or `start~end` range
 - `plcType` (int, required): PLC 신호 타입 / PLC signal type
 
+**`plcType` 값 / `plcType` values:**
+
+| `plcType` | 타입 / type | 설명 / description | 주소 폭 / address width |
+|:---:|:---|:---|:---|
+| 1 | bit | 1비트 (0/1) / 1 bit (0/1) | 1 |
+| 2 | byte | 8비트 정수, 부호없음 0~255 / 8-bit unsigned int (0–255) | 1 (예/e.g. `D100`) |
+| 3 | word | 16비트 정수, 부호있음 / 16-bit signed int | 2 (예/e.g. `D100~D101`) |
+| 4 | dword | 32비트 정수, 부호있음 / 32-bit signed int | 4 (예/e.g. `D100~D103`) |
+| 5 | float32 | 32비트 실수 / 32-bit float | 4 (예/e.g. `D100~D103`) |
+| 6 | float64 | 64비트 실수 / 64-bit float | 8 (예/e.g. `D100~D107`) |
+
 **Response example:**
 
 단건(원소 1개)은 배열을 해제해 단일 값으로 반환하고, 범위(2개 이상)는 배열로 반환합니다.
@@ -298,6 +309,24 @@ A single result (one element) is unwrapped to a scalar; a range (two or more) is
 { "status": 0, "value": 4 }
 { "status": 0, "value": [4, 5] }
 ```
+
+---
+
+## `POST /machine/plcAddress/plcType/plcValue`
+
+지정한 머신의 PLC 신호 값 쓰기. 쿼리 변환은 위 GET과 완전히 동일합니다(`plcType`→`type` 값 매핑 포함, `plcAddress`→`start`/`end`).
+Writes PLC signal values for the specified machine. The query translation is identical to the GET above (including the `plcType`→`type` value mapping and `plcAddress`→`start`/`end`).
+
+**Query parameters:** GET과 동일 / same as the GET.
+
+**Body:**
+```json
+{ "value": 1 }
+```
+입력은 항상 **단건**입니다. `plcAddress`가 범위(`D0015~D0016`)여도 그 주소들에 걸쳐 하나의 값을 씁니다(다중 값 입력이 아님). plcsignal은 값을 배열로 받으므로 `{ "value": 1 }`은 자동으로 `{ "value": [1] }`로 변환되고, `Value`/`VALUE` 키도 `value`로 정규화됩니다.
+The input is always a **single value**. Even when `plcAddress` is a range (`D0015~D0016`), one value is written across those addresses (not a multi-value input). Since plcsignal takes the value as an array, `{ "value": 1 }` is automatically converted to `{ "value": [1] }`, and `Value`/`VALUE` keys are normalized to `value`.
+
+**Response:** `{ "status": 0 }`
 
 ---
 

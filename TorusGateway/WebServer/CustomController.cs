@@ -820,6 +820,64 @@ namespace TorusGateway.WebServer
             }
         }
 
+        // POST /machine/plcAddress/plcType/plcValue?machine=N&plcAddress=D0015[~D0016]&plcType=0
+        // body: {"value": <값>}  → PLC 신호 값 쓰기. 입력은 항상 "단건"이다.
+        // plcAddress가 범위(D0015~D0016)여도 그 주소들에 걸쳐 하나의 값을 쓴다(다중 값 입력이 아님).
+        // GET과 동일하게 data://machine/plc/plcsignal + BuildPlcSignalFilter(plcType→type, plcAddress→start/end)를 사용.
+        // plcsignal은 값을 배열로 받으므로 {"value":1}을 {"value":[1]}로 래핑해 전달한다
+        // (WrapValueToArray — pass-through POST와 동일한 정규화. Value/VALUE→value 포함).
+        [HttpPost("/machine/plcAddress/plcType/plcValue")]
+        public async Task<ActionResult<string>> PostPlcValue()
+        {
+            string filter;
+            try
+            {
+                filter = BuildPlcSignalFilter(
+                    HttpContext.Request.Query.Select(
+                        p => new KeyValuePair<string, string>(p.Key, p.Value.ToString())));
+            }
+            catch (ArgumentException ex)
+            {
+                return ErrorResponse(400, ex.Message);
+            }
+
+            bool bodyParseDone = false;
+            try
+            {
+                const string address = "data://machine/plc/plcsignal";
+
+                using var reader = new StreamReader(Request.Body);
+                string body = await reader.ReadToEndAsync();
+                body = TorusController.NormalizeValueKey(body);
+                body = TorusController.WrapValueToArray(body);
+                bodyParseDone = true;
+
+                string updateResult = Torus.Torus.Instance.UpdateData(address, filter, body);
+                using var resultDoc = JsonDocument.Parse(updateResult);
+                int status = resultDoc.RootElement.GetProperty("status").GetInt32();
+                if (status != 0)
+                    return TorusErrorResponse(status);
+
+                var response = JsonSerializer.Serialize(new { status = 0 }, TorusController.JsonSerOptions);
+                return new ContentResult { Content = response, ContentType = "application/json", StatusCode = 200 };
+            }
+            catch (JsonException ex)
+            {
+                if (!bodyParseDone)
+                {
+                    _logger.LogWarning(ex, "Invalid JSON in request body");
+                    return ErrorResponse(400, "Invalid JSON in request body");
+                }
+                _logger.LogError(ex, "Invalid JSON in TORUS response");
+                return ErrorResponse(502, "Invalid JSON response from TORUS");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "PLC value write failed");
+                return ErrorResponse(500, "Error occurred while writing PLC value");
+            }
+        }
+
         // GET /machine/ncMemoryRootPath?machine=N
         [HttpGet("/machine/ncMemoryRootPath")]
         public ActionResult<string> GetNcMemoryRootPath()
