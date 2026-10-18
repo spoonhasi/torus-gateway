@@ -765,6 +765,21 @@ namespace TorusGateway.WebServer
             return string.Join("&", parts);
         }
 
+        // PLC 쓰기 body의 "value"가 number(또는 number들의 비어있지 않은 배열)인지 검사한다.
+        // 문자열("0" 등)·불리언·null·객체·빈 배열은 거부 → 정수/실수만 허용.
+        // (문자열 "0"이 그대로 기록돼 오작동한 사례 방지. body는 유효 JSON 객체라고 가정.)
+        internal static bool IsPlcValueNumeric(string json)
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return false;
+            if (!doc.RootElement.TryGetProperty("value", out var vp)) return false;
+            if (vp.ValueKind == JsonValueKind.Number) return true;
+            if (vp.ValueKind == JsonValueKind.Array)
+                return vp.GetArrayLength() >= 1
+                    && vp.EnumerateArray().All(e => e.ValueKind == JsonValueKind.Number);
+            return false;
+        }
+
         // plcType 입력값을 TORUS type 값으로 보정한다. 표에 없는 값(0/1 등)은 그대로 통과.
         //   2→0, 3→1, 4→2, 5→4, 6→5
         private static string MapPlcType(string val) => val.Trim() switch
@@ -849,8 +864,13 @@ namespace TorusGateway.WebServer
                 using var reader = new StreamReader(Request.Body);
                 string body = await reader.ReadToEndAsync();
                 body = TorusController.NormalizeValueKey(body);
+                bodyParseDone = true; // NormalizeValueKey가 통과했으면 body는 유효 JSON
+
+                // PLC 값은 number(정수/실수)만 허용. 문자열 "0" 등이 그대로 기록돼 오작동한 사례 방지.
+                if (!IsPlcValueNumeric(body))
+                    return ErrorResponse(400, "'value' must be a number");
+
                 body = TorusController.WrapValueToArray(body);
-                bodyParseDone = true;
 
                 string updateResult = Torus.Torus.Instance.UpdateData(address, filter, body);
                 using var resultDoc = JsonDocument.Parse(updateResult);

@@ -326,6 +326,9 @@ Writes PLC signal values for the specified machine. The query translation is ide
 입력은 항상 **단건**입니다. `plcAddress`가 범위(`D0015~D0016`)여도 그 주소들에 걸쳐 하나의 값을 씁니다(다중 값 입력이 아님). plcsignal은 값을 배열로 받으므로 `{ "value": 1 }`은 자동으로 `{ "value": [1] }`로 변환되고, `Value`/`VALUE` 키도 `value`로 정규화됩니다.
 The input is always a **single value**. Even when `plcAddress` is a range (`D0015~D0016`), one value is written across those addresses (not a multi-value input). Since plcsignal takes the value as an array, `{ "value": 1 }` is automatically converted to `{ "value": [1] }`, and `Value`/`VALUE` keys are normalized to `value`.
 
+`value`는 **number(정수/실수)만** 허용합니다. 문자열(예: `{ "value": "0" }`)·불리언 등은 `400`으로 거부됩니다.
+`value` accepts **only a number (integer/float)**. Strings (e.g. `{ "value": "0" }`), booleans, etc. are rejected with `400`.
+
 **Response:** `{ "status": 0 }`
 
 ---
