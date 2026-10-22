@@ -23,18 +23,13 @@ namespace TorusGateway
         private System.Windows.Forms.NotifyIcon? _notifyIcon;
         private bool _isActuallyClosing = false;
         private bool _torusConnectFailed = false; // Initialize 후 Connect 실패 여부
-        private int _modalDepth = 0; // 모달 창(Settings, Docs 등) 표시 중인 개수
-
-        // TORUS 콘솔 임베드. 매니저 개수만큼 패널/호스트를 만들어 ConsoleHostGrid에 겹쳐 두고 Visibility로 전환.
-        private readonly List<System.Windows.Forms.Panel> _consolePanels = new();
-        private readonly List<System.Windows.Forms.Integration.WindowsFormsHost> _consoleHosts = new();
-        private readonly ConsoleEmbedder _embedder = new();
+        private int _modalDepth = 0; // 모달 창(Settings, Test Request 등) 표시 중인 개수
 
         private const int MaxLogLines = 1000;
         // 미들웨어 스레드 → UI 스레드(flush)로 넘기는 요청 큐.
         private readonly ConcurrentQueue<RequestLogInfo> _logQueue = new();
-        // 아래 패널: POST 및 GET 외 메서드 — 스크롤 목록.
-        private readonly ObservableCollection<string> _logEntriesPost = new();
+        // 아래 패널: GET 외 메서드(PUT/DELETE 등) — 스크롤 목록.
+        private readonly ObservableCollection<string> _logEntriesOther = new();
         // 위 패널(GET)은 정기(주기)/간헐로 다시 나뉜다.
         private readonly ObservableCollection<GetRegularRow> _getRegularRows = new(); // 정기 — in-place 갱신 표
         private readonly ObservableCollection<string> _getIntermittentRows = new();   // 간헐 — 스크롤 목록
@@ -61,20 +56,16 @@ namespace TorusGateway
             InitializeComponent();
             ButtonWebServerOpen.IsEnabled = false;
             ButtonWebServerClose.IsEnabled = false;
-            ButtonNcExplorer.IsEnabled = false; // 웹서버 Open 시에만 활성화 (모든 기능이 HTTP 경유)
 
             // 이전 세션의 비정상 종료로 남은 임시 파일 디렉토리 정리.
-            CustomController.CleanupOrphanedTempDirs();
+            FileController.CleanupOrphanedTempDirs();
 
             LoadSettings();
 
             ListViewGetRegular.ItemsSource = _getRegularRows;
             ListBoxGetIntermittent.ItemsSource = _getIntermittentRows;
-            ListBoxApiLogPost.ItemsSource = _logEntriesPost;
+            ListBoxApiLogOther.ItemsSource = _logEntriesOther;
             RequestLoggingMiddleware.RequestLogged += OnRequestLogged;
-
-            // 시작 시 게이트웨이가 띄운 TORUS 콘솔 기록이 있으면 다시 임베드(재시작/재연결 흐름 대비).
-            this.Loaded += MainWindow_Loaded;
 
             // 200ms 간격으로 로그 배치 갱신 (Dispatcher 큐 과적 방지)
             _logTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
@@ -106,151 +97,16 @@ namespace TorusGateway
             }
         }
 
-        // bat의 활성 매니저 개수만큼 상단 탭 헤더(MainTabs)와 콘솔 호스트(ConsoleHostGrid)를 동적 생성한다.
-        // 호스트는 모두 항상 트리에 두고 Visibility로만 전환 → 탭을 바꿔도 콘솔 HWND가 파괴되지 않는다.
-        private void BuildConsoleTabs(IReadOnlyList<string> managerNames)
-        {
-            // 기존 콘솔 탭 헤더 제거 (index 0 = "API Log"는 유지).
-            while (MainTabs.Items.Count > 1)
-                MainTabs.Items.RemoveAt(MainTabs.Items.Count - 1);
-            // 기존 호스트 정리(이 시점엔 임베드된 콘솔이 없음 — 호출부에서 보장).
-            foreach (var h in _consoleHosts)
-            {
-                try { h.Dispose(); } catch { }
-            }
-            ConsoleHostGrid.Children.Clear();
-            _consoleHosts.Clear();
-            _consolePanels.Clear();
-
-            for (int i = 0; i < managerNames.Count; i++)
-            {
-                var panel = MakeConsolePanel();
-                var host = new System.Windows.Forms.Integration.WindowsFormsHost { Child = panel };
-                ConsoleHostGrid.Children.Add(host);
-                _consoleHosts.Add(host);
-                _consolePanels.Add(panel);
-
-                MainTabs.Items.Add(new System.Windows.Controls.TabItem { Header = FriendlyName(managerNames[i]) });
-
-                int idx = i;
-                panel.SizeChanged += (_, _) => _embedder.OnHostResized(idx, panel);
-            }
-
-            // 모든 호스트 핸들을 미리 생성해 임베드 대상(panel.Handle)이 유효하도록 한다.
-            if (managerNames.Count > 0)
-            {
-                ConsoleHostGrid.Visibility = Visibility.Visible;
-                UpdateLayout();
-                foreach (var p in _consolePanels) { try { _ = p.Handle; } catch { } }
-            }
-            UpdateContentVisibility();
-        }
-
-        private static System.Windows.Forms.Panel MakeConsolePanel() => new()
-        {
-            BackColor = System.Drawing.Color.Black,
-            Dock = System.Windows.Forms.DockStyle.Fill
-        };
-
-        // 탭 라벨: exe 이름에서 유도. mgrApplication.exe → "Application", mgrCommand.exe → "Command".
-        private static string FriendlyName(string exeName)
-        {
-            string n = System.IO.Path.GetFileNameWithoutExtension(exeName);
-            if (n.StartsWith("mgr", StringComparison.OrdinalIgnoreCase) && n.Length > 3)
-                n = n.Substring(3);
-            return string.IsNullOrEmpty(n) ? exeName : n;
-        }
-
-        private void MainTabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        {
-            if (e.OriginalSource is not System.Windows.Controls.TabControl) return; // 하위 컨트롤 이벤트 무시
-            UpdateContentVisibility();
-        }
-
-        // 선택된 탭에 따라 로그/콘솔 표시 전환. 콘텐츠는 항상 트리에 있고 Visibility만 바꾼다(HWND 보존).
-        private void UpdateContentVisibility()
-        {
-            if (LogArea == null || ConsoleHostGrid == null) return; // InitializeComponent 중 호출 대비
-            int idx = MainTabs.SelectedIndex; // 0 = API Log, 1.. = 콘솔
-            bool consoleSelected = idx >= 1 && idx - 1 < _consoleHosts.Count;
-            LogArea.Visibility = consoleSelected ? Visibility.Collapsed : Visibility.Visible;
-            ConsoleHostGrid.Visibility = consoleSelected ? Visibility.Visible : Visibility.Collapsed;
-            for (int i = 0; i < _consoleHosts.Count; i++)
-                _consoleHosts[i].Visibility = (consoleSelected && i == idx - 1) ? Visibility.Visible : Visibility.Collapsed;
-
-            // 콘솔이 막 보이게 됐으면 강제로 다시 그린다 — Visibility 토글만으론 WM_PAINT가 안 가
-            // 이전에 그린 영역만 남는(빈/잔상) 문제를 막는다. 뷰포트 1회 렌더라 누적량과 무관하게 저렴.
-            if (consoleSelected)
-                _embedder.ForceRedraw(idx - 1);
-        }
-
-        private void MainWindow_Loaded(object? sender, RoutedEventArgs e)
-        {
-            // 콘솔 임베드 기능은 아직 다듬는 중이라 시작 시 자동 재부착을 비활성화한다.
-            // Run은 예전처럼 bat 외부 실행만 하므로 임베드/재부착이 일어나지 않는다. (기능 완성 시 아래 복원)
-            return;
-#pragma warning disable CS0162 // 의도적으로 비활성화된 재부착 경로(기능 완성 시 복원)
-            // 게이트웨이가 띄운 콘솔 기록이 있을 때만 재부착 시도(사용자가 직접 띄운 TORUS는 건드리지 않음).
-            if (!_embedder.HasReattachableSession()) return;
-            string runPath = ConfigManager.Read(ConfigFile, "Main", "TorusRunPath", "");
-            var names = _embedder.GetManagerNames(runPath);
-            if (names.Count == 0) return;
-
-            BuildConsoleTabs(names);
-            if (_embedder.TryReattach(runPath, _consolePanels))
-                MainTabs.SelectedIndex = 1; // 첫 콘솔 탭으로
-            else
-                BuildConsoleTabs(Array.Empty<string>()); // 재부착할 게 없으면 빈 콘솔 탭 제거
-#pragma warning restore CS0162
-        }
-
-        // TORUS Settings의 Run 버튼 → bat 개수만큼 탭 생성 후 매니저를 conhost로 띄워 임베드.
-        private async void OnTorusRunRequested(object? sender, EventArgs e)
-        {
-            // 이미 임베드돼 있으면 탭 재생성 없이 콘솔 탭으로만 전환(재생성은 기존 콘솔을 파괴함).
-            if (_embedder.HasEmbedded)
-            {
-                if (MainTabs.Items.Count > 1) MainTabs.SelectedIndex = 1;
-                return;
-            }
-
-            string runPath = ConfigManager.Read(ConfigFile, "Main", "TorusRunPath", "");
-            var names = _embedder.GetManagerNames(runPath);
-            if (names.Count == 0)
-            {
-                MessageBox.Show(this, "No managers found in the TORUS run script.",
-                    "TORUS Console", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            BuildConsoleTabs(names);
-            int embedded = await _embedder.LaunchAndEmbedAsync(runPath, _consolePanels,
-                msg => MessageBox.Show(this, msg, "TORUS Console", MessageBoxButton.OK, MessageBoxImage.Warning));
-            if (embedded > 0)
-                MainTabs.SelectedIndex = 1; // 첫 콘솔 탭으로
-            else
-                BuildConsoleTabs(Array.Empty<string>()); // 임베드 못 했으면 빈 콘솔 탭 제거
-        }
-
-        // TORUS Settings의 Exit 버튼 → 매니저(콘솔) 종료 + 콘솔 탭 제거.
-        private void OnTorusExitRequested(object? sender, EventArgs e)
-        {
-            string runPath = ConfigManager.Read(ConfigFile, "Main", "TorusRunPath", "");
-            _embedder.ExitManagers(runPath);
-            BuildConsoleTabs(Array.Empty<string>());
-            MainTabs.SelectedIndex = 0;
-        }
-
         // 미들웨어 스레드에서 호출 — ConcurrentQueue로 lock 없이 적재. 집계는 UI 스레드 flush에서 처리.
         private void OnRequestLogged(RequestLogInfo info)
         {
             _logQueue.Enqueue(info);
         }
 
-        // UI 스레드에서 200ms마다 큐를 비워 GET(정기/간헐)·POST 패널에 반영하고, 유휴 GET 집계를 정리한다.
+        // UI 스레드에서 200ms마다 큐를 비워 GET(정기/간헐)·그 외 메서드 패널에 반영하고, 유휴 GET 집계를 정리한다.
         private void FlushLogQueue(object? sender, EventArgs e)
         {
-            bool addedIntermittent = false, addedPost = false;
+            bool addedIntermittent = false, addedOther = false;
             while (_logQueue.TryDequeue(out var info))
             {
                 string line = FormatLogLine(info);
@@ -260,15 +116,15 @@ namespace TorusGateway
                 }
                 else
                 {
-                    _logEntriesPost.Add(line);
-                    addedPost = true;
+                    _logEntriesOther.Add(line);
+                    addedOther = true;
                 }
             }
 
             EvictIdleGetAgg();
 
             TrimAndAutoScroll(_getIntermittentRows, ListBoxGetIntermittent, addedIntermittent);
-            TrimAndAutoScroll(_logEntriesPost, ListBoxApiLogPost, addedPost);
+            TrimAndAutoScroll(_logEntriesOther, ListBoxApiLogOther, addedOther);
         }
 
         // 파일 로그와 동일한 본문 앞에 시각을 붙인 UI 표시 한 줄. (IP·메서드·경로+쿼리·상태·소요)
@@ -523,8 +379,6 @@ namespace TorusGateway
                 }
             }
             catch { }
-            // 게이트웨이가 띄운(임베드한) TORUS가 있으면 함께 종료. (사용자가 직접 띄운 것은 추적되지 않아 안 건드림)
-            _embedder.KillEmbeddedManagers();
             Environment.Exit(0);
         }
 
@@ -542,8 +396,6 @@ namespace TorusGateway
                 }
             }
             catch { }
-            // 임베드된 콘솔을 부모에서 떼어 둔다(재시작된 프로세스가 다시 재부착).
-            _embedder.DetachAllForShutdown();
             // 새 프로세스 시작 후 현재 프로세스 강제 종료 (네이티브 DLL 포함 완전 해제)
             var args = autoConnect ? "--auto-connect" : "";
             System.Diagnostics.Process.Start(Environment.ProcessPath!, args);
@@ -691,7 +543,6 @@ namespace TorusGateway
                 _webServer = null;
                 ButtonWebServerOpen.IsEnabled = true;
                 ButtonWebServerClose.IsEnabled = false;
-                ButtonNcExplorer.IsEnabled = false; // 웹서버 종료 시 탐색기도 비활성화
                 TextBoxWebServerHost.IsReadOnly = false;
                 TextBoxWebServerPort.IsReadOnly = false;
             }
@@ -752,7 +603,6 @@ namespace TorusGateway
                 SaveServerSettings(); // 개통 성공 시에만 config.ini에 영구 저장
                 ButtonWebServerOpen.IsEnabled = false;
                 ButtonWebServerClose.IsEnabled = true;
-                ButtonNcExplorer.IsEnabled = true; // 웹서버 가동 중에만 NC 탐색기 사용 가능 (HTTP 경유)
                 TextBoxWebServerHost.IsReadOnly = true;
                 TextBoxWebServerPort.IsReadOnly = true;
             }
@@ -761,14 +611,7 @@ namespace TorusGateway
                 try { await WebServerCloseAsync(); }
                 catch (Exception ex) { MessageBox.Show($"Server stop failed: {ex.Message}", "Error"); }
             }
-            else if (sender == ButtonDocs)//커스텀 엔드포인트 문서 모달 창 열기
-            {
-                var docsWindow = new DocsWindow { Owner = this };
-                _modalDepth++;
-                try { docsWindow.ShowDialog(); }
-                finally { _modalDepth--; }
-            }
-            else if (sender == ButtonTestRequest)//GET/POST 테스트 모달 창 열기
+            else if (sender == ButtonTestRequest)//GET/PUT/DELETE 테스트 모달 창 열기
             {
                 var testWindow = new TestRequestWindow(TextBoxWebServerHost.Text, TextBoxWebServerPort.Text)
                 { Owner = this };
@@ -776,29 +619,13 @@ namespace TorusGateway
                 try { testWindow.ShowDialog(); }
                 finally { _modalDepth--; }
             }
-            else if (sender == ButtonNcExplorer)//NC 파일 탐색기 모달 창 열기 (HTTP 경유, Host/Port 전달)
-            {
-                var explorerWindow = new NcExplorerWindow(TextBoxWebServerHost.Text, TextBoxWebServerPort.Text)
-                { Owner = this };
-                _modalDepth++;
-                try { explorerWindow.ShowDialog(); }
-                finally { _modalDepth--; }
-            }
             else if (sender == ButtonTorusSetting)//TORUS 설정 모달 창 열기
             {
                 var settingWindow = new Torus.MachineListWindow();
                 settingWindow.Owner = this;
-                // Run/Exit 버튼은 콘솔 임베드를 호스트(MainWindow)에 위임 → 이벤트 구독.
-                settingWindow.MachineListControlInstance.TorusRunRequested += OnTorusRunRequested;
-                settingWindow.MachineListControlInstance.TorusExitRequested += OnTorusExitRequested;
                 _modalDepth++;
                 try { settingWindow.ShowDialog(); }
-                finally
-                {
-                    _modalDepth--;
-                    settingWindow.MachineListControlInstance.TorusRunRequested -= OnTorusRunRequested;
-                    settingWindow.MachineListControlInstance.TorusExitRequested -= OnTorusExitRequested;
-                }
+                finally { _modalDepth--; }
             }
             else if (sender == ButtonAbout)//About 정보 표시
             {

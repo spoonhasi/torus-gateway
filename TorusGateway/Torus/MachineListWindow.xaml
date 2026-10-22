@@ -8,6 +8,6 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip">
     <Grid>
-        <torusControl:MachineListControl x:Name="MachineListControlInstance" ConfigFilePath="config.ini"/>
+        <torusControl:MachineListControl ConfigFilePath="config.ini"/>
     </Grid>
 </Window>

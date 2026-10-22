@@ -25,30 +25,33 @@ namespace TorusGateway
             UpdateBodyVisibility();
         }
 
+        private string SelectedMethod =>
+            (ComboMethod.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "GET";
+
         private void UpdateBodyVisibility()
         {
             if (!IsLoaded && TextBoxBody == null) return;
-            bool isPost = (ComboMethod.SelectedItem as ComboBoxItem)?.Content?.ToString() == "POST";
-            TextBoxBody.IsEnabled = isPost;
-            LabelBody.Opacity = isPost ? 1.0 : 0.4;
-            LabelBody.Text = isPost
-                ? "Request Body (JSON) - TORUS expects the lowercase \"value\" key, e.g., {\"value\": 25.5}"
-                : "Request Body (JSON) - disabled for GET";
+            string method = SelectedMethod;
+            bool isPut = method == "PUT";
+            TextBoxBody.IsEnabled = isPut;
+            LabelBody.Opacity = isPut ? 1.0 : 0.4;
+            LabelBody.Text = isPut
+                ? "Request Body (JSON) - TORUS Item, value is an array, e.g., {\"value\": [25.5]}"
+                : $"Request Body (JSON) - disabled for {method}";
 
-            // POST 선택 시 body가 비어있으면 템플릿을 제공하고 커서를 값 위치로 이동
-            if (isPost && string.IsNullOrWhiteSpace(TextBoxBody.Text))
+            // PUT 선택 시 body가 비어있으면 템플릿을 제공하고 커서를 배열 안으로 이동
+            if (isPut && string.IsNullOrWhiteSpace(TextBoxBody.Text))
             {
-                const string template = "{\"value\": }";
+                const string template = "{\"value\": []}";
                 TextBoxBody.Text = template;
-                // "value": 다음 공백 위치에 커서
-                TextBoxBody.CaretIndex = template.Length - 1;
+                TextBoxBody.CaretIndex = template.Length - 2; // '[' 와 ']' 사이
                 TextBoxBody.Focus();
             }
         }
 
         private async void ButtonSend_Click(object sender, RoutedEventArgs e)
         {
-            string method = (ComboMethod.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "GET";
+            string method = SelectedMethod;
             string baseUrl = TextBoxBaseUrl.Text.TrimEnd('/');
             string path = TextBoxPath.Text.Trim();
             if (!path.StartsWith("/")) path = "/" + path;
@@ -59,10 +62,14 @@ namespace TorusGateway
             try
             {
                 HttpResponseMessage resp;
-                if (method == "POST")
+                if (method == "PUT")
                 {
                     var content = new StringContent(TextBoxBody.Text ?? "", Encoding.UTF8, "application/json");
-                    resp = await _http.PostAsync(url, content);
+                    resp = await _http.PutAsync(url, content);
+                }
+                else if (method == "DELETE")
+                {
+                    resp = await _http.DeleteAsync(url);
                 }
                 else
                 {

@@ -26,11 +26,12 @@
             </Grid.ColumnDefinitions>
             <ComboBox Grid.Column="0" x:Name="ComboMethod" Width="80" SelectionChanged="ComboMethod_SelectionChanged">
                 <ComboBoxItem Content="GET" IsSelected="True"/>
-                <ComboBoxItem Content="POST"/>
+                <ComboBoxItem Content="PUT"/>
+                <ComboBoxItem Content="DELETE"/>
             </ComboBox>
             <TextBox Grid.Column="1" x:Name="TextBoxBaseUrl" FontFamily="Consolas" Width="220" Margin="5,0,0,0" VerticalContentAlignment="Center"/>
             <TextBox Grid.Column="2" x:Name="TextBoxPath" FontFamily="Consolas" Margin="5,0,0,0" VerticalContentAlignment="Center"
-                     ToolTip="e.g., /machineList or /machine/1/channel/1/axis/1/machinePosition?machine=1&amp;channel=1&amp;axis=1"/>
+                     ToolTip="e.g., /machineList or /machine/channel/axis/machinePosition?machine=1&amp;channel=1&amp;axis=1"/>
             <Button Grid.Column="3" x:Name="ButtonSend" Content="Send" Width="80" Margin="5,0,0,0" Click="ButtonSend_Click"/>
         </Grid>
 

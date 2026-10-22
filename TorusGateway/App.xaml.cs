@@ -48,8 +48,8 @@ namespace TorusGateway
 
         protected override void OnExit(ExitEventArgs e)
         {
-            CleanupTempDirectories(WebServer.CustomController.TempDirDownload);
-            CleanupTempDirectories(WebServer.CustomController.TempDirUpload);
+            CleanupTempDirectories(WebServer.FileController.TempDirDownload);
+            CleanupTempDirectories(WebServer.FileController.TempDirUpload);
             // 소유한 경우에만 해제 (소유하지 않은 스레드의 ReleaseMutex는 ApplicationException).
             if (_ownsMutex)
             {

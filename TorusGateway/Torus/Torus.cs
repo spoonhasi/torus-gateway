@@ -1,6 +1,5 @@
 using System;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using IntelligentApiCS;
 
 namespace TorusGateway.Torus
@@ -12,15 +11,6 @@ namespace TorusGateway.Torus
         // 동시 요청 처리량은 떨어지지만 정확성을 우선함.
         private static readonly object _apiLock = new();
         private static Torus? _instance;
-
-        // 한글 머신명 등이 \uXXXX로 이스케이프되지 않도록 하는 직렬화 옵션.
-        private static readonly JsonSerializerOptions _relaxedJson = new()
-        {
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-        };
-
-        // getFileListEx 타임아웃. TORUS API 타임아웃 단위는 ms로 가정 (네이티브 매뉴얼 기준).
-        private const int FileListTimeoutMs = 10000;
 
         public string AppName { get; private set; }
         public Guid AppGuid { get; private set; }
@@ -131,36 +121,7 @@ namespace TorusGateway.Torus
             }
         }
 
-        public string ExecuteCNCFile(int channel, string ncPath, int machineID)
-        {
-            lock (_apiLock)
-            {
-                int result = Api.CNCFileExecute(channel, ncPath, out Item _, machineID);
-                return JsonSerializer.Serialize(new { status = result });
-            }
-        }
-
-        // 지정한 부모 경로 아래에 폴더를 생성한다. CreateCNCFolder(parentpath, name, ...) 오버로드 사용.
-        public string CreateFolder(string parentPath, string name, int machineID)
-        {
-            lock (_apiLock)
-            {
-                int result = Api.CreateCNCFolder(parentPath, name, out Item _, machineID, FileListTimeoutMs);
-                return JsonSerializer.Serialize(new { status = result });
-            }
-        }
-
-        // 지정한 NC 파일/폴더의 이름을 변경한다. CNCFileRename(전체경로, 새이름, ...) 사용.
-        // ncPath는 대상의 전체 경로, newName은 새 이름(경로 아님).
-        public string RenameFile(string ncPath, string newName, int machineID)
-        {
-            lock (_apiLock)
-            {
-                int result = Api.CNCFileRename(ncPath, newName, out Item _, machineID, FileListTimeoutMs);
-                return JsonSerializer.Serialize(new { status = result });
-            }
-        }
-
+        // TORUS에 등록된 머신 목록. GetData와 같이 Item을 그대로 반환하고, Item이 없으면 status만 반환.
         public string GetMachinesInfo()
         {
             lock (_apiLock)
@@ -169,50 +130,8 @@ namespace TorusGateway.Torus
                 if (item == null)
                     return JsonSerializer.Serialize(new { status = result });
 
-                return InjectStatus(item.ToString(), result);
+                return item.ToString();
             }
-        }
-
-        // NC 메모리 경로 하위의 파일/폴더 목록 조회. 확장 정보(size/datetime/isDir 포함)인 getFileListEx 사용.
-        // getMachinesInfo처럼 응답 JSON에 status가 없을 수 있어 InjectStatus로 주입한다.
-        public string GetFileList(string ncPath, int machineID)
-        {
-            lock (_apiLock)
-            {
-                int result = Api.getFileListEx(ncPath, out Item item, machineID, FileListTimeoutMs);
-                if (item == null)
-                    return JsonSerializer.Serialize(new { status = result });
-
-                return InjectStatus(item.ToString() ?? string.Empty, result);
-            }
-        }
-
-        // getMachinesInfo 응답에는 status 필드가 없으므로 JSON에 주입한다.
-        // 과거엔 문자열에서 '{'를 직접 찾아 끼워넣어, 루트가 배열이면 첫 원소 안에
-        // 잘못 주입되는 등 취약했다. 루트 종류를 판별해 안전하게 처리한다.
-        //  - 객체: status 키 추가/덮어쓰기
-        //  - 객체가 아님(배열/스칼라/null): value로 감싸 status와 함께 반환
-        //  - 파싱 불가: {"status":<status>}만 반환
-        internal static string InjectStatus(string itemJson, int status)
-        {
-            JsonNode? root;
-            try
-            {
-                root = JsonNode.Parse(itemJson);
-            }
-            catch (JsonException)
-            {
-                return JsonSerializer.Serialize(new { status });
-            }
-
-            if (root is JsonObject obj)
-            {
-                obj["status"] = status; // 없으면 추가, 이미 있으면 덮어씀
-                return obj.ToJsonString(_relaxedJson);
-            }
-
-            // 루트가 객체가 아니면(배열/스칼라/null) value로 감싸 status와 함께 반환.
-            return new JsonObject { ["status"] = status, ["value"] = root }.ToJsonString(_relaxedJson);
         }
     }
 }
