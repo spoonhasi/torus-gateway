@@ -22,10 +22,19 @@
                     <Button x:Name="ButtonTorusSetting" Content="TORUS Settings" Width="120" Margin="5,0,0,0" Click="Button_Click"/>
                     <Button x:Name="ButtonTestRequest" Content="Test Request" Width="100" Margin="5,0,0,0" Click="Button_Click"/>
                 </StackPanel>
+                <!-- 서버 시작/종료 + 프로토콜 선택 (HTTP 또는 OPC UA 중 하나만 실행) -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                    <Button x:Name="ButtonWebServerOpen" Content="WebServer Open" Width="120" Click="Button_Click"/>
-                    <Button x:Name="ButtonWebServerClose" Content="WebServer Close" Width="120" Margin="5,0,0,0" Click="Button_Click"/>
-                    <TextBlock Text="Server Host:" FontFamily="Consolas" VerticalAlignment="Center" Margin="15,0,5,0"/>
+                    <Button x:Name="ButtonServerOpen" Content="Server Open" Width="120" Click="Button_Click"/>
+                    <Button x:Name="ButtonServerClose" Content="Server Close" Width="120" Margin="5,0,0,0" Click="Button_Click"/>
+                    <TextBlock Text="Protocol:" FontFamily="Consolas" VerticalAlignment="Center" Margin="15,0,8,0"/>
+                    <RadioButton x:Name="RadioProtocolHttp" Content="HTTP (REST)" GroupName="Protocol"
+                                 VerticalAlignment="Center" Margin="0,0,12,0" Checked="RadioProtocol_Checked"/>
+                    <RadioButton x:Name="RadioProtocolOpcUa" Content="OPC UA" GroupName="Protocol"
+                                 VerticalAlignment="Center" Checked="RadioProtocol_Checked"/>
+                </StackPanel>
+                <!-- HTTP 설정 -->
+                <StackPanel x:Name="PanelHttpSettings" Orientation="Horizontal" Margin="0,0,0,5">
+                    <TextBlock Text="Server Host:" FontFamily="Consolas" VerticalAlignment="Center" Margin="0,0,5,0"/>
                     <TextBox x:Name="TextBoxWebServerHost" FontFamily="Consolas" Width="120" VerticalAlignment="Center"/>
                     <TextBlock Text="Server Port:" FontFamily="Consolas" VerticalAlignment="Center" Margin="15,0,5,0"/>
                     <TextBox x:Name="TextBoxWebServerPort" FontFamily="Consolas" Width="80" VerticalAlignment="Center"/>
@@ -37,6 +46,32 @@
                                  ToolTip="127.0.0.1 (same PC only)"/>
                     <RadioButton x:Name="RadioAccessSpecific" Content="Specify IPs" GroupName="AccessMode"
                                  VerticalAlignment="Center" Checked="RadioAccess_Checked"/>
+                </StackPanel>
+                <!-- OPC UA 설정 -->
+                <StackPanel x:Name="PanelOpcUaSettings" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                        <TextBlock Text="Endpoint:" FontFamily="Consolas" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                        <TextBox x:Name="TextBoxOpcUaEndpoint" FontFamily="Consolas" Width="220" VerticalAlignment="Center"
+                                 ToolTip="e.g., opc.tcp://0.0.0.0:4840"/>
+                        <TextBlock Text="Security:" FontFamily="Consolas" VerticalAlignment="Center" Margin="15,0,5,0"/>
+                        <ComboBox x:Name="ComboOpcUaPolicy" Width="180" VerticalAlignment="Center" SelectionChanged="ComboOpcUaPolicy_SelectionChanged"/>
+                        <ComboBox x:Name="ComboOpcUaMode" Width="120" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                        <CheckBox x:Name="CheckOpcUaAutoAccept" Content="Auto-accept client certificates" VerticalAlignment="Center" Margin="15,0,0,0"
+                                  ToolTip="Accept any client certificate. Leave off to trust clients by moving their certificate from pki\rejected to pki\trusted."/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                        <TextBlock Text="Auth:" FontFamily="Consolas" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <RadioButton x:Name="RadioOpcUaAnonymous" Content="Anonymous" GroupName="OpcUaAuth"
+                                     VerticalAlignment="Center" Margin="0,0,12,0" Checked="RadioOpcUaAuth_Checked"/>
+                        <RadioButton x:Name="RadioOpcUaUsername" Content="Username" GroupName="OpcUaAuth"
+                                     VerticalAlignment="Center" Checked="RadioOpcUaAuth_Checked"/>
+                        <TextBox x:Name="TextBoxOpcUaUsername" FontFamily="Consolas" Width="120" Margin="8,0,0,0" VerticalAlignment="Center"
+                                 ToolTip="Username"/>
+                        <PasswordBox x:Name="PasswordBoxOpcUa" Width="120" Margin="5,0,0,0" VerticalAlignment="Center"
+                                     ToolTip="Password (stored encrypted for the current Windows user)"/>
+                        <Button x:Name="ButtonOpcUaCertificates" Content="Certificates" Width="90" Margin="15,0,0,0" Click="Button_Click"
+                                ToolTip="Open the certificate folder (pki). Move a client certificate from rejected\certs to trusted\certs to trust it."/>
+                    </StackPanel>
                 </StackPanel>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
@@ -56,7 +91,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="API Request Log" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="4,0,0,4"/>
+            <TextBlock x:Name="TextBlockLogTitle" Grid.Row="0" Grid.Column="0" Text="API Request Log" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="4,0,0,4"/>
             <!-- GET(위) / 그 외 메서드(아래) 로그 분리. 가운데 GridSplitter로 높이 조절 -->
             <Grid Grid.Row="1" Grid.Column="0">
                 <Grid.Resources>
@@ -155,7 +190,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="PUT / DELETE" FontSize="11"
+                    <TextBlock x:Name="TextBlockOtherLog" Grid.Row="0" Text="PUT / DELETE" FontSize="11"
                                Foreground="{StaticResource SecondaryTextBrush}" Margin="4,0,0,2"/>
                     <ListBox Grid.Row="1" x:Name="ListBoxApiLogOther" Style="{StaticResource LogListBox}"/>
                 </Grid>

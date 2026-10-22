@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Threading;
+using TorusGateway.OpcUa;
 using TorusGateway.Torus;
 using TorusGateway.WebServer;
 
@@ -20,6 +21,10 @@ namespace TorusGateway
     public partial class MainWindow : Window
     {
         private WebServer.WebServer? _webServer;
+        private OpcUaHost? _opcUaHost; // HTTP와 OPC UA 중 하나만 실행한다
+        private bool _serverUiLocked;  // 서버 실행(또는 시작) 중이라 프로토콜·설정 입력을 잠갔는지
+        // OPC UA 서버 스레드 → UI 스레드로 넘기는 이벤트 로그 (노드 생성, 쓰기, 거부 등).
+        private readonly ConcurrentQueue<string> _opcUaLogQueue = new();
         private System.Windows.Forms.NotifyIcon? _notifyIcon;
         private bool _isActuallyClosing = false;
         private bool _torusConnectFailed = false; // Initialize 후 Connect 실패 여부
@@ -54,8 +59,8 @@ namespace TorusGateway
         {
             TorusInit(Constants.TorusAppName, Constants.TorusAppGuid);//TORUS App 등록정보를 입력합니다.
             InitializeComponent();
-            ButtonWebServerOpen.IsEnabled = false;
-            ButtonWebServerClose.IsEnabled = false;
+            ButtonServerOpen.IsEnabled = false; // TORUS 연결 후 활성화
+            ButtonServerClose.IsEnabled = false;
 
             // 이전 세션의 비정상 종료로 남은 임시 파일 디렉토리 정리.
             FileController.CleanupOrphanedTempDirs();
@@ -119,6 +124,12 @@ namespace TorusGateway
                     _logEntriesOther.Add(line);
                     addedOther = true;
                 }
+            }
+            // OPC UA 이벤트는 아래 패널로 (OPC UA 모드에서는 이 패널 제목이 "OPC UA Events").
+            while (_opcUaLogQueue.TryDequeue(out var opcUaLine))
+            {
+                _logEntriesOther.Add(opcUaLine);
+                addedOther = true;
             }
 
             EvictIdleGetAgg();
@@ -369,6 +380,13 @@ namespace TorusGateway
             RequestLoggingMiddleware.RequestLogged -= OnRequestLogged;
             _notifyIcon?.Dispose();
             _notifyIcon = null;
+            await StopServersAsync();
+            Environment.Exit(0);
+        }
+
+        // 실행 중인 서버(HTTP 또는 OPC UA)를 종료한다. 종료/재시작 경로용이라 예외는 삼킨다.
+        private async Task StopServersAsync()
+        {
             try
             {
                 if (_webServer != null)
@@ -379,23 +397,22 @@ namespace TorusGateway
                 }
             }
             catch { }
-            Environment.Exit(0);
+            try
+            {
+                if (_opcUaHost != null)
+                {
+                    await _opcUaHost.StopAsync();
+                    _opcUaHost = null;
+                }
+            }
+            catch { }
         }
 
         private async void RestartApplication(bool autoConnect = false)
         {
             SaveWindowSettings();
-            // 웹서버가 켜져 있으면 먼저 종료 (포트 충돌 방지)
-            try
-            {
-                if (_webServer != null)
-                {
-                    await _webServer.StopAsync();
-                    _webServer.Dispose();
-                    _webServer = null;
-                }
-            }
-            catch { }
+            // 서버가 켜져 있으면 먼저 종료 (포트 충돌 방지)
+            await StopServersAsync();
             // 새 프로세스 시작 후 현재 프로세스 강제 종료 (네이티브 DLL 포함 완전 해제)
             var args = autoConnect ? "--auto-connect" : "";
             System.Diagnostics.Process.Start(Environment.ProcessPath!, args);
@@ -473,6 +490,15 @@ namespace TorusGateway
             TextBoxWebServerPort.Text = ConfigManager.Read(ConfigFile, ConfigSection, "Port", "5001");
             LoadAccessMode(ConfigManager.Read(ConfigFile, ConfigSection, "AllowedIPs", "*"));
 
+            // OPC UA 설정과 프로토콜 선택 (OPC UA 컨트롤을 먼저 채운 뒤 라디오를 켜서 표시 전환이 일어나게 한다).
+            ComboOpcUaPolicy.ItemsSource = OpcUaSettings.SecurityPolicyNames;
+            ComboOpcUaMode.ItemsSource = OpcUaSettings.SecurityModeNames;
+            ShowOpcUaSettings(OpcUaSettings.Load(ConfigFile));
+            if (ConfigManager.Read(ConfigFile, ConfigSection, "Protocol", "HTTP") == "OPCUA")
+                RadioProtocolOpcUa.IsChecked = true;
+            else
+                RadioProtocolHttp.IsChecked = true;
+
             if (double.TryParse(ConfigManager.Read(ConfigFile, ConfigSection, "Width", ""), out double w) && w >= 200)
                 this.Width = w;
             if (double.TryParse(ConfigManager.Read(ConfigFile, ConfigSection, "Height", ""), out double h) && h >= 150)
@@ -495,12 +521,128 @@ namespace TorusGateway
             }
         }
 
-        // 서버 관련 설정 저장 (WebServer Open 성공 시에만)
+        // 서버 관련 설정 저장 (HTTP 서버 Open 성공 시에만)
         private void SaveServerSettings()
         {
+            ConfigManager.Write(ConfigFile, ConfigSection, "Protocol", "HTTP");
             ConfigManager.Write(ConfigFile, ConfigSection, "Host", TextBoxWebServerHost.Text);
             ConfigManager.Write(ConfigFile, ConfigSection, "Port", TextBoxWebServerPort.Text);
             ConfigManager.Write(ConfigFile, ConfigSection, "AllowedIPs", GetAllowedIPsCsv());
+        }
+
+        private void ShowOpcUaSettings(OpcUaSettings s)
+        {
+            TextBoxOpcUaEndpoint.Text = s.EndpointUrl;
+            ComboOpcUaPolicy.SelectedItem = OpcUaSettings.SecurityPolicyNames.Contains(s.SecurityPolicy) ? s.SecurityPolicy : "None";
+            ComboOpcUaMode.SelectedItem = OpcUaSettings.SecurityModeNames.Contains(s.SecurityMode) ? s.SecurityMode : "None";
+            CheckOpcUaAutoAccept.IsChecked = s.AutoAcceptUntrustedCertificates;
+            TextBoxOpcUaUsername.Text = s.Username;
+            PasswordBoxOpcUa.Password = s.Password;
+            if (s.UseUsername) RadioOpcUaUsername.IsChecked = true; else RadioOpcUaAnonymous.IsChecked = true;
+        }
+
+        // 화면의 OPC UA 설정을 읽는다. 폴링 주기 등 화면에 없는 값은 config.ini 값을 유지.
+        private OpcUaSettings ReadOpcUaSettings()
+        {
+            var s = OpcUaSettings.Load(ConfigFile);
+            s.EndpointUrl = TextBoxOpcUaEndpoint.Text.Trim();
+            s.SecurityPolicy = ComboOpcUaPolicy.SelectedItem as string ?? "None";
+            s.SecurityMode = ComboOpcUaMode.SelectedItem as string ?? "None";
+            s.AutoAcceptUntrustedCertificates = CheckOpcUaAutoAccept.IsChecked == true;
+            s.UseUsername = RadioOpcUaUsername.IsChecked == true;
+            s.Username = TextBoxOpcUaUsername.Text.Trim();
+            s.Password = PasswordBoxOpcUa.Password;
+            return s;
+        }
+
+        private bool IsOpcUaSelected => RadioProtocolOpcUa.IsChecked == true;
+
+        // 프로토콜 전환: 해당 설정만 보이고, 로그 패널 제목과 Test Request(HTTP 전용) 활성 상태를 맞춘다.
+        private void RadioProtocol_Checked(object sender, RoutedEventArgs e)
+        {
+            if (PanelHttpSettings == null || PanelOpcUaSettings == null) return; // InitializeComponent 중 대비
+            bool opcUa = IsOpcUaSelected;
+            PanelHttpSettings.Visibility = opcUa ? Visibility.Collapsed : Visibility.Visible;
+            PanelOpcUaSettings.Visibility = opcUa ? Visibility.Visible : Visibility.Collapsed;
+            if (opcUa) PanelAllowedIPs.Visibility = Visibility.Collapsed;
+            else RadioAccess_Checked(sender, e); // IP 지정 패널 표시 여부 복원
+            TextBlockLogTitle.Text = opcUa ? "OPC UA Server Log" : "API Request Log";
+            TextBlockOtherLog.Text = opcUa ? "OPC UA Events (node created, write, rejected)" : "PUT / DELETE";
+            ButtonTestRequest.IsEnabled = !opcUa;
+        }
+
+        private void RadioOpcUaAuth_Checked(object sender, RoutedEventArgs e)
+        {
+            if (TextBoxOpcUaUsername == null || PasswordBoxOpcUa == null) return;
+            bool username = RadioOpcUaUsername.IsChecked == true;
+            TextBoxOpcUaUsername.IsEnabled = username && !_serverUiLocked;
+            PasswordBoxOpcUa.IsEnabled = username && !_serverUiLocked;
+        }
+
+        // 보안 정책 None이면 모드도 None만, 그 외에는 Sign/SignAndEncrypt만 고를 수 있게 맞춘다.
+        private void ComboOpcUaPolicy_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (ComboOpcUaMode == null) return;
+            bool none = (ComboOpcUaPolicy.SelectedItem as string ?? "None") == "None";
+            if (none) ComboOpcUaMode.SelectedItem = "None";
+            else if ((ComboOpcUaMode.SelectedItem as string ?? "None") == "None") ComboOpcUaMode.SelectedItem = "SignAndEncrypt";
+            ComboOpcUaMode.IsEnabled = !none && !_serverUiLocked;
+        }
+
+        // 서버 실행 여부에 따라 버튼과 설정 입력을 잠그거나 푼다.
+        private void SetServerRunningUi(bool running)
+        {
+            _serverUiLocked = running;
+            ButtonServerOpen.IsEnabled = !running;
+            ButtonServerClose.IsEnabled = running;
+            RadioProtocolHttp.IsEnabled = !running;
+            RadioProtocolOpcUa.IsEnabled = !running;
+            TextBoxWebServerHost.IsReadOnly = running;
+            TextBoxWebServerPort.IsReadOnly = running;
+            TextBoxOpcUaEndpoint.IsReadOnly = running;
+            ComboOpcUaPolicy.IsEnabled = !running;
+            CheckOpcUaAutoAccept.IsEnabled = !running;
+            RadioOpcUaAnonymous.IsEnabled = !running;
+            RadioOpcUaUsername.IsEnabled = !running;
+            ComboOpcUaPolicy_SelectionChanged(this, null!);
+            RadioOpcUaAuth_Checked(this, null!);
+        }
+
+        private void LogOpcUa(string message) =>
+            _opcUaLogQueue.Enqueue($"[{DateTime.Now:HH:mm:ss}] {message}");
+
+        // OPC UA 서버 시작. 설정 검증 → 저장 → 시작. 실패하면 메시지를 띄우고 그대로 둔다.
+        private async Task OpenOpcUaAsync()
+        {
+            var settings = ReadOpcUaSettings();
+            string? invalid = OpcUaSettings.Validate(settings);
+            if (invalid != null)
+            {
+                MessageBox.Show(invalid, "Error");
+                return;
+            }
+
+            var host = new OpcUaHost();
+            // 시작하는 동안(첫 시작은 인증서 생성으로 1초쯤 걸림) 프로토콜·설정을 바꾸지 못하게 먼저 잠근다.
+            SetServerRunningUi(true);
+            ButtonServerClose.IsEnabled = false;
+            try
+            {
+                await host.StartAsync(settings, LogOpcUa);
+            }
+            catch (Exception ex)
+            {
+                host.Dispose();
+                SetServerRunningUi(false);
+                MessageBox.Show($"OPC UA server start failed: {ex.Message}", "Error");
+                return;
+            }
+            _opcUaHost = host;
+            ButtonServerClose.IsEnabled = true;
+            settings.Save(ConfigFile);
+            ConfigManager.Write(ConfigFile, ConfigSection, "Protocol", "OPCUA");
+            LogOpcUa($"STARTED {settings.EndpointUrl} ({settings.SecurityPolicy}/{settings.SecurityMode}, " +
+                     (settings.UseUsername ? "username" : "anonymous") + ")");
         }
 
         //TORUS에 연결하기 전에 App 등록정보를 TORUS 운용 클래스에 입력합니다.
@@ -533,19 +675,22 @@ namespace TorusGateway
             _webServer = server; // 정상 기동 시에만 보관
         }
 
-        //웹서버를 종료합니다.
-        public async Task WebServerCloseAsync()
+        //실행 중인 서버(HTTP 또는 OPC UA)를 종료합니다.
+        public async Task ServerCloseAsync()
         {
             if (_webServer != null)
             {
                 await _webServer.StopAsync();  // 비동기적으로 웹 서버를 종료
                 _webServer.Dispose();
                 _webServer = null;
-                ButtonWebServerOpen.IsEnabled = true;
-                ButtonWebServerClose.IsEnabled = false;
-                TextBoxWebServerHost.IsReadOnly = false;
-                TextBoxWebServerPort.IsReadOnly = false;
             }
+            if (_opcUaHost != null)
+            {
+                await _opcUaHost.StopAsync();
+                _opcUaHost = null;
+                LogOpcUa("STOPPED");
+            }
+            SetServerRunningUi(false);
         }
 
         private async void Button_Click(object sender, RoutedEventArgs e)
@@ -567,7 +712,7 @@ namespace TorusGateway
                 if (result == 0)
                 {
                     ButtonTorusConnect.Content = "Connected";
-                    ButtonWebServerOpen.IsEnabled = true;
+                    ButtonServerOpen.IsEnabled = true;
                 }
                 else
                 {
@@ -578,8 +723,13 @@ namespace TorusGateway
                     ButtonTorusConnect.IsEnabled = true;
                 }
             }
-            else if (sender == ButtonWebServerOpen)//게이트웨이 서버 오픈
+            else if (sender == ButtonServerOpen)//게이트웨이 서버 오픈 (선택한 프로토콜)
             {
+                if (IsOpcUaSelected)
+                {
+                    await OpenOpcUaAsync();
+                    return;
+                }
                 string host = TextBoxWebServerHost.Text;
                 if (host.Trim() == "")
                 {
@@ -601,15 +751,17 @@ namespace TorusGateway
                     return;
                 }
                 SaveServerSettings(); // 개통 성공 시에만 config.ini에 영구 저장
-                ButtonWebServerOpen.IsEnabled = false;
-                ButtonWebServerClose.IsEnabled = true;
-                TextBoxWebServerHost.IsReadOnly = true;
-                TextBoxWebServerPort.IsReadOnly = true;
+                SetServerRunningUi(true);
             }
-            else if (sender == ButtonWebServerClose)//게이트웨이 서버 종료
+            else if (sender == ButtonServerClose)//게이트웨이 서버 종료
             {
-                try { await WebServerCloseAsync(); }
+                try { await ServerCloseAsync(); }
                 catch (Exception ex) { MessageBox.Show($"Server stop failed: {ex.Message}", "Error"); }
+            }
+            else if (sender == ButtonOpcUaCertificates)//OPC UA 인증서 폴더(pki) 열기
+            {
+                System.IO.Directory.CreateDirectory(OpcUaHost.PkiRoot);
+                System.Diagnostics.Process.Start("explorer.exe", OpcUaHost.PkiRoot);
             }
             else if (sender == ButtonTestRequest)//GET/PUT/DELETE 테스트 모달 창 열기
             {

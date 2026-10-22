@@ -24,6 +24,15 @@ public class ConfigManagerTests : IDisposable
         Assert.Equal("Value1", ConfigManager.Read(_fileName, "Section1", "Key1"));
     }
 
+    // 암호화한 비밀번호(base64 300자 이상)나 긴 허용 IP 목록이 잘리지 않아야 한다.
+    [Fact]
+    public void Long_value_is_not_truncated()
+    {
+        string value = new string('A', 1000) + "=";
+        ConfigManager.Write(_fileName, "S", "Long", value);
+        Assert.Equal(value, ConfigManager.Read(_fileName, "S", "Long"));
+    }
+
     [Fact]
     public void Read_missing_key_returns_default()
     {

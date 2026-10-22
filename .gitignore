@@ -387,3 +387,4 @@ MigrationBackup/
 FodyWeavers.xsd
 # 논문 그림 원본(TIFF). 저장소에는 docs/의 PNG만 둔다.
 docs/*.tif
+docs/*.xls

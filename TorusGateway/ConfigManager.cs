@@ -16,11 +16,14 @@ namespace TorusGateway
         [DllImport("kernel32", CharSet = CharSet.Unicode)]
         private static extern int GetPrivateProfileString(string section, string key, string? def, StringBuilder retVal, int size, string filePath);
 
+        private const int MaxValueLength = 32767;
+
         // 값이 없으면 defaultValue를 기록한 뒤 반환.
         public static string Read(string fileName, string section, string key, string defaultValue = "")
         {
-            StringBuilder buf = new(255);
-            _ = GetPrivateProfileString(section, key, null, buf, 255, ResolvePath(fileName));
+            // 255자 버퍼로는 긴 값(암호화한 비밀번호, 긴 허용 IP 목록)이 잘려서 넉넉히 잡는다.
+            StringBuilder buf = new(MaxValueLength);
+            _ = GetPrivateProfileString(section, key, null, buf, MaxValueLength, ResolvePath(fileName));
             if (buf.Length == 0)
             {
                 Write(fileName, section, key, defaultValue);

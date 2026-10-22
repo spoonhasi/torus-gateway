@@ -1,11 +1,15 @@
 # TORUS Gateway
 
 ## 프로젝트 개요
-TORUS(통합 CNC 인터페이스 플랫폼)를 HTTP REST API로 노출하는 WPF 데스크탑 게이트웨이.
-논문 "The Development of REST API Gateway Application Using Unified CNC Interface Platform"
-(IJPEM-ST, https://doi.org/10.57062/ijpem-st.2024.00171)에서 소개한 프로그램의 구현이다.
+TORUS(통합 CNC 인터페이스 플랫폼)를 HTTP REST API 또는 OPC UA로 노출하는 WPF 데스크탑 게이트웨이.
+두 논문에서 소개한 프로그램의 구현이다.
+- HTTP: "The Development of REST API Gateway Application Using Unified CNC Interface Platform"
+  (IJPEM-ST, https://doi.org/10.57062/ijpem-st.2024.00171)
+- OPC UA: "OPC UA-Based Machining Cell Monitoring System for Multi-Vendors' Machine Tools and Industrial Robots"
+  (IJPEM-ST 1(1) 63–69, 2023, https://doi.org/10.57062/ijpem-st.2022.0024). 원래 별도의 비공개 저장소
+  `torus_opcua_server`(v1.0.1)였던 것을 v2.1.0에서 최신 공식 스택으로 옮겨 통합했다.
 
-**유지보수 종료.** v2.0.0은 논문 설계(그림 4·5·6)에 맞춰 정리한 최종 버전이다.
+**유지보수 종료.** v2.0.0에서 HTTP를 논문 설계(그림 4·5·6)대로 정리했고, v2.1.0에서 OPC UA 서버를 통합했다.
 v1.2.3~v1.7.1에 있던 과도기 기능(커스텀 엔드포인트, 응답 필터링, body 정규화, NC 탐색기, 문서 창,
 콘솔 임베딩)은 v2.0.0에서 제거했다. 마지막 운영 버전은 태그 `v1.7.1`.
 
@@ -14,6 +18,11 @@ v1.2.3~v1.7.1에 있던 과도기 기능(커스텀 엔드포인트, 응답 필�
 - **x86 필수** (TORUS 네이티브 DLL이 32비트)
 - `TorusApi/`: TORUS SDK v2.3.3의 DLL 중 실제 의존하는 14개만 보관
   (IntelligentApiCS, ItemCS는 관리 어셈블리 참조, 나머지는 그 의존 네이티브 DLL)
+- OPC UA: NuGet `OPCFoundation.NetStandard.Opc.Ua.Server` 1.5.378.x (MIT). Core가
+  `Microsoft.Extensions.Logging` 10.x를 끌어오지만 ASP.NET Core 8 웹서버와 함께 동작함을 확인.
+  1.5.378 API: `ApplicationInstance(config, ITelemetryContext)`, `CheckApplicationInstanceCertificatesAsync`,
+  `StartAsync/StopAsync`, `OnMonitoredItemCreated(..., ISampledDataChangeMonitoredItem)`, `DecryptedPassword`는 byte[].
+  WPF 프로젝트라 암시적 using에 `System.IO`가 없다(파일 상단에 명시).
 - 테스트: xUnit (`TorusGateway.Tests/`)
 
 ## 프로젝트 구조
@@ -21,9 +30,9 @@ v1.2.3~v1.7.1에 있던 과도기 기능(커스텀 엔드포인트, 응답 필�
 TorusGateway.sln
 TorusGateway/
   App.xaml(.cs)              # 단일 인스턴스 Mutex, 수동 MainWindow 생성, 종료 시 임시 디렉토리 정리
-  MainWindow.xaml(.cs)       # Torus 연결, 웹서버 open/close, Test Request, IP 허용목록(런타임 갱신), 요청 로그, 트레이/종료
+  MainWindow.xaml(.cs)       # Torus 연결, 프로토콜 선택(HTTP/OPC UA), 서버 open/close, Test Request, IP 허용목록(런타임 갱신), 로그, 트레이/종료
   TestRequestWindow.xaml(.cs)# HTTP 테스터 (GET/PUT/DELETE, JSON body, 모달)
-  ConfigManager.cs           # config.ini (Win32 INI) 읽기/쓰기 헬퍼 (static)
+  ConfigManager.cs           # config.ini (Win32 INI) 읽기/쓰기 헬퍼 (static). 값 버퍼 32767자(예전 255자는 DPAPI 비밀번호·긴 IP 목록을 잘랐음)
   Torus/
     Torus.cs                 # TORUS API 싱글턴 래퍼. _apiLock으로 모든 네이티브 호출 직렬화
                              # GetData, UpdateData, UploadFile, DownloadFile, DeleteFile, GetMachinesInfo
@@ -36,9 +45,16 @@ TorusGateway/
     FileController.cs        # GET/PUT/DELETE /file/machine/ncpath + 임시 디렉토리 관리
     TorusStatusCodes.cs      # TORUS NC_RET 값 → 설명 (파일 전송 실패 응답에 사용)
     FileLogger.cs            # 일자별 파일 로그(static). 4xx/5xx만, 총 사이즈 캡
+  OpcUa/
+    OpcUaHost.cs             # ApplicationConfiguration 생성, 인증서(pki/) 준비, 서버 시작/종료
+    TorusOpcUaServer.cs      # StandardServer. 서버 정보, 사용자 인증(익명 또는 사용자 이름 중 하나만)
+    TorusNodeManager.cs      # CustomNodeManager2. 동적 노드 생성, OnRead/OnWrite, 구독 노드 폴링 스레드
+    OpcUaValues.cs           # 순수 변환(internal static): NodeId↔TORUS 주소, Item→값, 값→updateData body
+    OpcUaSettings.cs         # 설정 검증(Validate), config.ini [OpcUa] 저장, 비밀번호 DPAPI 암호화
 TorusGateway.Tests/
   BuildAddressAndFilterTests.cs
   RequestValidationTests.cs  # ValidateUpdateBody, FileController.FileNameOf
+  OpcUaValuesTests.cs        # OPC UA 변환·설정 검증
   TorusStatusCodesTests.cs
   IpAllowlistOptionsTests.cs
   ConfigManagerTests.cs
@@ -55,6 +71,7 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 - PreBuild: `TorusApi/*.dll` → 출력 디렉토리 복사 (`$(SolutionDir)` 폴백으로 솔루션 외부 빌드도 동작)
 - PostBuild: `TorusGateway.info` → 출력 디렉토리 복사
 - 앱이 실행 중이면 출력 디렉토리 DLL이 잠겨 PreBuild 복사가 실패한다. 실행 중 컴파일만 확인하려면 `-o <임시 경로>`로 빌드.
+- `config.ini`, `logs/`, `pki/`(OPC UA 인증서)는 실행 파일 폴더(`bin/...`)에 생긴다. **`bin`을 통째로 지우면 사용자 설정과 인증서가 사라진다.**
 - 테스트 프로젝트는 `InternalsVisibleTo`로 internal 헬퍼에 접근
 
 ## API (논문 그림 4·5·6과 동일)
@@ -73,11 +90,41 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
 - `GET /machineList` → `Api.getMachinesInfo` Item 그대로. `GET /` → `{"status":"ok"}`, `GET /health` → `{"status":0,"value":"ok"}`.
 - 앱 자체 오류: `{"status":-1,"error":"<message>"}`, HTTP 400/404/500.
 
+## OPC UA (논문 2 그림 2·3, 기존 torus_opcua_server 이식)
+- NodeId 문자열 식별자 = HTTP 경로+쿼리와 같은 문자열: `ns=2;s=/machine/channel/axis/machinePosition?machine=1&channel=1&axis=1`.
+  논문은 `data://`를 붙였지만 이후 뺐다(사용자 결정, 2026-10-22). `data://` 형식은 받지 않는다(같은 데이터에 노드가 둘 생기므로 별칭 없음).
+  필터(`?` 뒤)는 필수 — 경로만 있는 식별자는 같은 경로의 폴더 NodeId와 겹친다.
+- 네임스페이스 URI `urn:TorusGateway:TORUS`가 ns=2. 주소 공간은 `Objects/machine`(NodeId `/machine`)만 두고 시작,
+  `GetManagerHandle`에서 TORUS getData가 성공하면 경로 폴더 + 필터 이름 변수를 만들고, 실패하면 null(BadNodeIdUnknown).
+- 타입: string/long/double/boolean → String/Int64/Double/Boolean. list* 타입은 항상 배열, 그 외는 원소 2개 이상일 때만 배열.
+- 쓰기: `TypeInfo.IsInstanceOfDataType`로 노드 타입과 같은 값만, `BuildUpdateBody`로 항상 `{"value":[...]}`(JSON 직렬화,
+  문화권 무관) 생성, 빈 배열·NaN·다른 형은 TORUS로 보내지 않음(BadTypeMismatch). IndexRange 부분 쓰기 미지원.
+  OnRead/OnWrite는 SDK가 노드 관리자 `Lock` 안에서 부른다 — 그래서 기존 서버의 쓰기 후 100ms 대기는 뺐다(모든 세션을 막았음).
+  쓰기 성공 후에는 그 노드의 마지막 값을 지워 다음 폴링이 TORUS의 실제 값을 다시 알리게 한다.
+- 구독: `OnMonitoredItemCreated/Deleted`로 Value 속성 MonitoredItem의 Id→노드를 추적(다른 속성 구독은 무시), 폴링 스레드가 `[OpcUa] PollIntervalMs`(기본 100)마다
+  구독 노드만 TORUS에서 다시 읽어 값/상태가 바뀔 때만 `ClearChangeMasks`. 구독 중인 노드의 OnRead는 캐시 값 반환.
+  폴링은 노드마다 try/catch(백그라운드 스레드 예외는 프로세스를 죽이므로).
+- 잠금 순서: 노드 관리자 `Lock` 안에서 TORUS를 부를 수 있지만(GetManagerHandle, OnRead), 폴링 스레드는 TORUS 호출을 끝낸 뒤에만
+  `Lock`을 잡는다 — `_apiLock`을 쥔 채 `Lock`을 기다리는 경로가 없어 교착 없음.
+- 인증: 익명 모드면 익명만, 사용자 이름 모드면 일치하는 계정만(고정 시간 비교). **익명은 읽기 전용** —
+  OnWrite에서 BadUserAccessDenied, `OnReadUserAccessLevel`로 UserAccessLevel=CurrentRead를 알림(기본 설정이 익명+None이라
+  막지 않으면 네트워크의 누구나 CNC 값을 바꿀 수 있음, 2026-10-22 사용자 결정). 쓰기는 Username 모드에서만. 채널 보안 None일 때 UserName 토큰 정책에
+  Basic256Sha256을 지정해 비밀번호를 암호화.
+- 인증서: `pki/{own,trusted,issuer,rejected}` (실행 파일 폴더 기준). 자동 수락 기본 꺼짐. rejected/certs → trusted/certs로 옮기면
+  재시작 없이 허용됨(확인). 기존 서버의 `e.Accept = true`(무조건 수락)와 상대 경로 저장소는 고쳤다.
+  서버 인증서는 처음 시작한 엔드포인트 주소·PC 이름으로 만들어져, 이후 주소(0.0.0.0 → 특정 IP 등)나 PC 이름이 바뀌면
+  `CheckApplicationInstanceCertificatesAsync`가 ServiceResultException을 던진다 → `pki/own`을 지우고 새로 만든 뒤 CERT 로그.
+  같은 주소로 재시작하면 인증서는 유지된다(확인). 새로 만들면 서버 인증서를 신뢰해 둔 클라이언트는 다시 신뢰해야 한다.
+- 보안 정책: None, Basic256Sha256, Aes128_Sha256_RsaOaep, Aes256_Sha256_RsaPss (Basic128Rsa15/Basic256 제외).
+
 ## 동작 흐름
 1. **Torus Connect** → `Torus.Connect()` (`Api.Initialize`). 실패 시 "Reconnect" → 앱 재시작(`--auto-connect`).
    TORUS API에 Uninitialize가 없어 재연결은 프로세스 재시작으로만 가능.
-2. **WebServer Open** → ASP.NET Core 시작 (기본 `0.0.0.0:5001`)
-3. 요청 → 미들웨어(로그, IP 허용목록) → 컨트롤러 → `Torus` 싱글턴 → 네이티브 API
+2. **Protocol** 선택(HTTP / OPC UA, `config.ini [MainWindow] Protocol=HTTP|OPCUA`) → **Server Open**.
+   한 번에 하나만 실행한다(두 서버가 TORUS 호출 잠금을 공유하고 OPC UA 구독이 TORUS를 계속 폴링하므로).
+   HTTP: ASP.NET Core (기본 `0.0.0.0:5001`). OPC UA: `OpcUaHost` (기본 `opc.tcp://0.0.0.0:4840`).
+3. HTTP 요청 → 미들웨어(로그, IP 허용목록) → 컨트롤러 → `Torus` 싱글턴 → 네이티브 API.
+   OPC UA 요청 → `TorusNodeManager` → `Torus` 싱글턴. OPC UA 이벤트(NODE/UNKNOWN/WRITE/AUTH)는 메인 창 아래 로그 패널에 표시.
 
 ## 단일 인스턴스
 - Named Mutex(`TorusGateway_SingleInstance`)로 중복 실행 방지. `--auto-connect` 재시작 시에는 건너뜀.
@@ -87,6 +134,7 @@ dotnet test TorusGateway.Tests/TorusGateway.Tests.csproj
   열려 있는 동안 종료/트레이 이동/최소화를 차단 (작업표시줄 입력 대비).
 
 ## Test Request 창
+- HTTP 전용. OPC UA 프로토콜을 고르면 버튼이 비활성화된다.
 - Base URL은 메인 창 Host/Port (`0.0.0.0`/`*`/빈 값은 `127.0.0.1`).
 - GET/PUT/DELETE. PUT만 body 활성, 비어 있으면 `{"value": []}` 템플릿. 10초 타임아웃. 파일 업로드(multipart)는 지원하지 않음.
 
